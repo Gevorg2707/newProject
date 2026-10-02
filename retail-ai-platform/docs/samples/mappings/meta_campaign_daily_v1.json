@@ -1,0 +1,27 @@
+{
+  "sourceSystem": "META_ADS",
+  "targetEntity": "CAMPAIGN_DAILY",
+  "name": "Meta Ads Manager export v1 (column names = ASSUMPTION, confirm on the client's export)",
+  "fieldToHeader": {
+    "date": "Reporting starts",
+    "campaign_name": "Campaign name",
+    "adset_name": "Ad set name",
+    "spend": "Amount spent (AMD)",
+    "impressions": "Impressions",
+    "clicks": "Link clicks",
+    "results": "Results",
+    "currency": "Currency"
+  },
+  "settings": {
+    "vatIncluded": null,
+    "currency": "AMD",
+    "dateFormat": "yyyy-MM-dd",
+    "decimalSeparator": ".",
+    "idColumns": ["Reporting starts", "Campaign name"],
+    "platform": "meta",
+    "returnMarkers": null,
+    "timezone": "Asia/Yerevan",
+    "accountRef": null,
+    "asOfDate": null
+  }
+}

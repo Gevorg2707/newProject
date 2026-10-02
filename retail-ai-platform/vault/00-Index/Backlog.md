@@ -31,7 +31,7 @@ updated: 2026-10-02
 - [x] **C** KPI formula_v0: `KpiService` + `KpiFlags`, 6 ручных тестов (возврат, скидка, НДС 20%, НДС неизвестен, нет COGS, дни запаса, маркетинг); 25 тестов всего (2026-10-02)
 - [ ] **C** Парсер MT940 + сверка банк ↔ продажи (внутренние переводы, T+1 эквайринг).
 - [x] **C** Недельный XLSX-отчёт: 4 листа на армянском, CLI `--report.run=true`, e2e-тест импорт→commit→отчёт; образец `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` (2026-10-02)
-- [ ] **C** CLI для пилота: upload + commit из командной строки (`--import.run=true --file --mapping`), чтобы весь цикл шёл без кода
+- [x] **C** CLI пилота: `--tenant.create`, `--import.run` с JSON-mapping, `--report.run`; проверено реальным запуском jar; `docs/PILOT_RUNBOOK.md` (2026-10-02)
 - [ ] **C** LLM-adapter + eval-набор 20 кейсов из [[AI-ассистенты и границы]].
 
 ## Фаза 2+

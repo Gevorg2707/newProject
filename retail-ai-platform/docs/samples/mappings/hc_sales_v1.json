@@ -1,0 +1,30 @@
+{
+  "sourceSystem": "HC_TRADE",
+  "targetEntity": "SALE_LINE",
+  "name": "HC sales grid v1 (synthetic layout — replace headers with the client's real export)",
+  "fieldToHeader": {
+    "document_number": "Փաստաթղթի համար",
+    "occurred_at": "Ամսաթիվ",
+    "operation_type": "Գործառնության տեսակ",
+    "sku_code": "Ապրանքի կոդ",
+    "sku_name": "Ապրանքի անվանում",
+    "unit": "Չափի միավոր",
+    "warehouse": "Պահեստ",
+    "quantity": "Քանակ",
+    "gross_amount": "Գումար (ԱԱՀ-ով)",
+    "discount_amount": "Զեղչ",
+    "cogs_amount": "Ինքնարժեք (առանց ԱԱՀ)"
+  },
+  "settings": {
+    "vatIncluded": true,
+    "currency": "AMD",
+    "dateFormat": "dd.MM.yyyy",
+    "decimalSeparator": ".",
+    "idColumns": ["Փաստաթղթի համար", "Ապրանքի կոդ"],
+    "platform": null,
+    "returnMarkers": ["Վերադարձ գնորդից"],
+    "timezone": "Asia/Yerevan",
+    "accountRef": null,
+    "asOfDate": null
+  }
+}

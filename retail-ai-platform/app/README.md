@@ -68,6 +68,9 @@ java -jar target/retail-ai-platform-0.1.0-SNAPSHOT.jar --report.run=true \
   [--vat-rate=0.20 --variable-cost=2000 --formulas-confirmed=true --slow-mover-days=90]
 ```
 
-## Next (sprint 1, remaining)
-Reconciliation bank ↔ sales (internal transfers, T+1 acquiring) → MT940 parser → LLM adapter + 20-case eval set →
-upload/commit CLI for pilots.
+## Pilot CLI
+`--tenant.create`, `--import.run` (upload + commit with a JSON mapping), `--report.run`. Step-by-step: `docs/PILOT_RUNBOOK.md`.
+Sample mappings: `docs/samples/mappings/*.json`.
+
+## Next
+Reconciliation bank ↔ sales (internal transfers, T+1 acquiring) → MT940 parser → LLM adapter + 20-case eval set.

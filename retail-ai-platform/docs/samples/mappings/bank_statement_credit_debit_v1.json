@@ -1,0 +1,26 @@
+{
+  "sourceSystem": "BANK",
+  "targetEntity": "BANK_TRANSACTION",
+  "name": "Bank CSV with credit/debit columns v1 (headers depend on the bank — confirm per client)",
+  "fieldToHeader": {
+    "occurred_at": "Ամսաթիվ",
+    "credit": "Մուտք",
+    "debit": "Ելք",
+    "currency": "Արժույթ",
+    "balance_after": "Մնացորդ",
+    "description": "Նշանակում",
+    "txn_id": "Փաստաթուղթ"
+  },
+  "settings": {
+    "vatIncluded": null,
+    "currency": "AMD",
+    "dateFormat": "dd.MM.yyyy",
+    "decimalSeparator": ".",
+    "idColumns": ["Փաստաթուղթ"],
+    "platform": null,
+    "returnMarkers": null,
+    "timezone": "Asia/Yerevan",
+    "accountRef": "Main AMD account",
+    "asOfDate": null
+  }
+}
