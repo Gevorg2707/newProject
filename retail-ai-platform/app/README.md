@@ -46,6 +46,16 @@ re-check the parser assumptions (header row = first row, first sheet).
 - Bank descriptions are masked before storage (`ValueConverters.maskDescription`); PII columns are simply not mapped.
 - Products are created on first sight per `(source_system, code)` alias with a `new_sku` warning.
 
+## KPI formula_v0 (`KpiService`)
+`compute(tenant, from, to, KpiSettings)` returns a `KpiReport` with per-SKU rows and a set of `KpiFlags`.
+- Net sales = gross − discounts − returns; divided by (1 + VAT rate) only where `vat_included = true`;
+  `vat_included = NULL` is computed as-is and flagged `VAT_UNKNOWN`.
+- Gross profit only over lines that have COGS; `cogsCoverage` = share of net sales with COGS; `COGS_MISSING` flag.
+- Days of stock = latest snapshot per (sku, warehouse) summed ÷ net units per day over the period; `slowMover` > 90 days.
+- Contribution = GP − variableCostPerOrder × sale lines − ad spend in the period. Variable costs are an assumption
+  until the accountant confirms them (`VARIABLE_COSTS_ASSUMED` is always present; `FORMULAS_NOT_CONFIRMED` until sign-off).
+- Rounding: full precision internally, HALF_UP to 2 decimals at the boundary. Tests in `KpiServiceIT` are hand-checkable.
+
 ## Next (sprint 1, remaining)
-KPI formula_v0 over sale_lines/inventory (net sales, GP, contribution, days of stock) with VAT/COGS flags →
-weekly XLSX report → reconciliation bank ↔ sales (internal transfers).
+Weekly XLSX report (KPI + per-SKU + data-quality sheet) → reconciliation bank ↔ sales (internal transfers, T+1 acquiring) →
+MT940 parser → LLM adapter + eval set.
