@@ -1,0 +1,9 @@
+{
+  "alwaysUpdateLinks": true,
+  "newFileLocation": "folder",
+  "newFileFolderPath": "20-Анализ",
+  "attachmentFolderPath": "attachments",
+  "useMarkdownLinks": false,
+  "showFrontmatter": true,
+  "defaultViewMode": "preview"
+}
