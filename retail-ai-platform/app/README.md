@@ -56,6 +56,18 @@ re-check the parser assumptions (header row = first row, first sheet).
   until the accountant confirms them (`VARIABLE_COSTS_ASSUMED` is always present; `FORMULAS_NOT_CONFIRMED` until sign-off).
 - Rounding: full precision internally, HALF_UP to 2 decimals at the boundary. Tests in `KpiServiceIT` are hand-checkable.
 
+## Weekly XLSX report (`WeeklyReportService`, `ReportCommand`)
+Four sheets, Armenian labels: Ամփոփում (KPI + formula notes + flags explained), SKU (sorted by net sales), Տվյալների որակ
+(validation issues of the last 30 days, grouped), Աղբյուրներ (last import per source). Numbers come only from `KpiService`.
+Sample from synthetic data: `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx`.
+
+Pilot CLI (no UI):
+```bash
+java -jar target/retail-ai-platform-0.1.0-SNAPSHOT.jar --report.run=true \
+  --tenant=<uuid> --from=2026-09-01 --to=2026-09-30 --out=report.xlsx \
+  [--vat-rate=0.20 --variable-cost=2000 --formulas-confirmed=true --slow-mover-days=90]
+```
+
 ## Next (sprint 1, remaining)
-Weekly XLSX report (KPI + per-SKU + data-quality sheet) → reconciliation bank ↔ sales (internal transfers, T+1 acquiring) →
-MT940 parser → LLM adapter + eval set.
+Reconciliation bank ↔ sales (internal transfers, T+1 acquiring) → MT940 parser → LLM adapter + 20-case eval set →
+upload/commit CLI for pilots.

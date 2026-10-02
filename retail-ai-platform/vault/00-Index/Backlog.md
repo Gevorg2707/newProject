@@ -30,7 +30,8 @@ updated: 2026-10-02
 - [x] **C** ColumnMapping + CommitService: V2 (products, aliases, sale_lines, inventory_snapshots, campaign_daily, bank_transactions, validation_issues, RLS), 4 writer-а, отчёт ошибок, upsert рекламы с версией, маскирование банка; 19 тестов (2026-10-02)
 - [x] **C** KPI formula_v0: `KpiService` + `KpiFlags`, 6 ручных тестов (возврат, скидка, НДС 20%, НДС неизвестен, нет COGS, дни запаса, маркетинг); 25 тестов всего (2026-10-02)
 - [ ] **C** Парсер MT940 + сверка банк ↔ продажи (внутренние переводы, T+1 эквайринг).
-- [ ] **C** Генератор недельного XLSX-отчёта без UI: лист KPI, лист SKU, лист качества данных (flags + validation_issues), армянские подписи.
+- [x] **C** Недельный XLSX-отчёт: 4 листа на армянском, CLI `--report.run=true`, e2e-тест импорт→commit→отчёт; образец `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` (2026-10-02)
+- [ ] **C** CLI для пилота: upload + commit из командной строки (`--import.run=true --file --mapping`), чтобы весь цикл шёл без кода
 - [ ] **C** LLM-adapter + eval-набор 20 кейсов из [[AI-ассистенты и границы]].
 
 ## Фаза 2+
