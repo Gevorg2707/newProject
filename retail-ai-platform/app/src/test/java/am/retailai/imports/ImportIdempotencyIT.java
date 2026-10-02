@@ -2,6 +2,7 @@ package am.retailai.imports;
 
 import am.retailai.tenant.TenantId;
 import am.retailai.tenant.TenantTransactions;
+import am.retailai.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,7 +11,6 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.util.List;
 import java.util.UUID;
 
@@ -35,7 +35,7 @@ class ImportIdempotencyIT {
 
     @Test
     void sameXlsxUploadedTwice_secondUploadIsDuplicateAndInsertsNothing() throws IOException {
-        byte[] file = fixture("fixtures/synthetic_hc_sales.xlsx");
+        byte[] file = Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx");
 
         ImportResult first = importService.upload(tenant, SourceSystem.HC_TRADE, "HC_sales.xlsx", file, "tester",
             List.of("Փաստաթղթի համար", "Ապրանքի կոդ"));
@@ -56,7 +56,7 @@ class ImportIdempotencyIT {
 
     @Test
     void sameRowsInDifferentFile_areRecognizedBySourceRecordId() throws IOException {
-        byte[] csv = fixture("fixtures/synthetic_meta_campaign_daily.csv");
+        byte[] csv = Fixtures.bytes("fixtures/synthetic_meta_campaign_daily.csv");
         byte[] csvWithExtraNewline = (new String(csv) + "\n").getBytes();
 
         ImportResult first = importService.upload(tenant, SourceSystem.META_ADS, "meta_1.csv", csv, "tester",
@@ -86,10 +86,4 @@ class ImportIdempotencyIT {
         return tenantTx.inTenant(t, j -> j.sql("SELECT count(*) FROM import_batches").query(Integer.class).single());
     }
 
-    static byte[] fixture(String path) throws IOException {
-        try (InputStream in = ImportIdempotencyIT.class.getClassLoader().getResourceAsStream(path)) {
-            if (in == null) throw new IllegalArgumentException("missing fixture " + path);
-            return in.readAllBytes();
-        }
-    }
 }

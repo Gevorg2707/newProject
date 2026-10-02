@@ -38,6 +38,7 @@ CREATE TABLE source_records (
     row_number        integer NOT NULL,
     raw_payload       jsonb NOT NULL,           -- header -> cell value, as text
     status            text NOT NULL DEFAULT 'accepted', -- accepted | rejected | needs_review
+    source_version    integer NOT NULL DEFAULT 1,  -- bumped when the same record arrives with different content (restated ads data)
     ingested_at       timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT uq_source_records_identity UNIQUE (tenant_id, source_system, source_record_id)
 );

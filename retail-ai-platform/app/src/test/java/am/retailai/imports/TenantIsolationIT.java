@@ -2,6 +2,7 @@ package am.retailai.imports;
 
 import am.retailai.tenant.TenantId;
 import am.retailai.tenant.TenantTransactions;
+import am.retailai.support.Fixtures;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -27,7 +28,7 @@ class TenantIsolationIT {
     void tenantB_cannotReadTenantA_records_evenWithUnfilteredQuery() throws IOException {
         TenantId a = newTenant("Shop A");
         TenantId b = newTenant("Shop B");
-        byte[] csv = ImportIdempotencyIT.fixture("fixtures/synthetic_meta_campaign_daily.csv");
+        byte[] csv = Fixtures.bytes("fixtures/synthetic_meta_campaign_daily.csv");
 
         importService.upload(a, SourceSystem.META_ADS, "meta.csv", csv, "owner-a", List.of());
 

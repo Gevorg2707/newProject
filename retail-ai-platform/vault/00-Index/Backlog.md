@@ -27,9 +27,9 @@ updated: 2026-10-02
 ## Фаза 1 — ядро импорта (после решения по стеку)
 - [x] **C** Скелет `app/`: Spring Boot 4.1.1 / Java 25, Flyway V1 (tenants, import_batches, source_records, audit_events, RLS FORCE), парсеры CSV/XLSX, ImportService, 11 тестов зелёные (2026-10-02)
 - [x] **C** Парсер XLSX/CSV + идемпотентность: тест «тот же файл дважды = duplicate, 0 строк» и «те же строки в другом файле = 0 новых» зелёные
-- [ ] **C** ColumnMapping (таблица + применение) → типизированный commit в SaleLine/InventorySnapshot/CampaignDaily/BankTransaction + отчёт ошибок валидации
-- [ ] **C** SKU alias + KPI formula_v0 + тесты на возвраты/скидки/НДС/округление.
-- [ ] **C** Парсер MT940 + сверка банк ↔ продажи.
+- [x] **C** ColumnMapping + CommitService: V2 (products, aliases, sale_lines, inventory_snapshots, campaign_daily, bank_transactions, validation_issues, RLS), 4 writer-а, отчёт ошибок, upsert рекламы с версией, маскирование банка; 19 тестов (2026-10-02)
+- [ ] **C** KPI formula_v0 над sale_lines/inventory: net sales, GP, contribution, days of stock, флаги vat_unknown/no_cogs; тесты на возвраты/скидки/НДС/округление.
+- [ ] **C** Парсер MT940 + сверка банк ↔ продажи (внутренние переводы, T+1 эквайринг).
 - [ ] **C** Генератор недельного отчёта (XLSX/PDF) без UI.
 - [ ] **C** LLM-adapter + eval-набор 20 кейсов из [[AI-ассистенты и границы]].
 

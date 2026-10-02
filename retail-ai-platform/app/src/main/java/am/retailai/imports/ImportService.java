@@ -47,7 +47,7 @@ public class ImportService {
                 .param("tenant", tenant.value()).param("sha", sha)
                 .query(UUID.class).optional();
             if (existing.isPresent()) {
-                return new ImportResult(existing.get(), true, 0, 0, 0);
+                return new ImportResult(existing.get(), true, 0, 0, 0, 0);
             }
 
             UUID batchId = jdbc.sql("""
@@ -66,18 +66,26 @@ public class ImportService {
                 throw new UncheckedIOException("Cannot parse " + fileName, e);
             }
 
-            int inserted = 0;
+            int inserted = 0, updated = 0;
             for (ParsedRow row : rows) {
                 String recordId = RecordIdentity.of(row, idColumns);
-                int n = jdbc.sql("""
+                // RETURNING (xmax = 0): true = freshly inserted, false = existing row updated; no row = content identical.
+                Optional<Boolean> outcome = jdbc.sql("""
                         INSERT INTO source_records (tenant_id, import_batch_id, source_system, source_record_id, row_number, raw_payload)
                         VALUES (:tenant, :batch, :source, :rid, :rownum, :payload)
-                        ON CONFLICT (tenant_id, source_system, source_record_id) DO NOTHING
+                        ON CONFLICT (tenant_id, source_system, source_record_id) DO UPDATE SET
+                            raw_payload = EXCLUDED.raw_payload, import_batch_id = EXCLUDED.import_batch_id,
+                            row_number = EXCLUDED.row_number, status = 'accepted',
+                            source_version = source_records.source_version + 1, ingested_at = now()
+                        WHERE source_records.raw_payload IS DISTINCT FROM EXCLUDED.raw_payload
+                        RETURNING (xmax = 0) AS inserted
                         """)
                     .param("tenant", tenant.value()).param("batch", batchId).param("source", source.name())
                     .param("rid", recordId).param("rownum", row.rowNumber()).param("payload", jsonb(row))
-                    .update();
-                inserted += n;
+                    .query(Boolean.class).optional();
+                if (outcome.isPresent()) {
+                    if (outcome.get()) inserted++; else updated++;
+                }
             }
 
             jdbc.sql("UPDATE import_batches SET status = 'parsed', row_count = :rows, updated_at = now() WHERE id = :id")
@@ -87,10 +95,10 @@ public class ImportService {
                     VALUES (:tenant, :actor, 'import.upload', 'import_batch', :id, :details)
                     """)
                 .param("tenant", tenant.value()).param("actor", uploadedBy).param("id", batchId.toString())
-                .param("details", jsonb("{\"file\":" + quote(fileName) + ",\"rows\":" + rows.size() + ",\"inserted\":" + inserted + "}"))
+                .param("details", jsonb("{\"file\":" + quote(fileName) + ",\"rows\":" + rows.size() + ",\"inserted\":" + inserted + ",\"updated\":" + updated + "}"))
                 .update();
 
-            return new ImportResult(batchId, false, rows.size(), inserted, rows.size() - inserted);
+            return new ImportResult(batchId, false, rows.size(), inserted, updated, rows.size() - inserted - updated);
         });
     }
 
