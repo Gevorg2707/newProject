@@ -13,6 +13,7 @@ final class ReportLabels {
     static final String SHEET_SKU = "SKU";
     static final String SHEET_QUALITY = "Տվյալների որակ";
     static final String SHEET_SOURCES = "Աղբյուրներ";
+    static final String SHEET_RECON = "Համադրում";
 
     static final Map<KpiFlags, String> FLAGS = Map.of(
         KpiFlags.FORMULAS_NOT_CONFIRMED, "Բանաձևերը դեռ հաստատված չեն հաշվապահի կողմից (formula_v0)",

@@ -29,7 +29,8 @@ updated: 2026-10-02
 - [x] **C** Парсер XLSX/CSV + идемпотентность: тест «тот же файл дважды = duplicate, 0 строк» и «те же строки в другом файле = 0 новых» зелёные
 - [x] **C** ColumnMapping + CommitService: V2 (products, aliases, sale_lines, inventory_snapshots, campaign_daily, bank_transactions, validation_issues, RLS), 4 writer-а, отчёт ошибок, upsert рекламы с версией, маскирование банка; 19 тестов (2026-10-02)
 - [x] **C** KPI formula_v0: `KpiService` + `KpiFlags`, 6 ручных тестов (возврат, скидка, НДС 20%, НДС неизвестен, нет COGS, дни запаса, маркетинг); 25 тестов всего (2026-10-02)
-- [ ] **C** Парсер MT940 + сверка банк ↔ продажи (внутренние переводы, T+1 эквайринг).
+- [x] **C** Сверка банк ↔ продажи (V3): свои счета, зеркальные переводы, эквайринг с лагом 0–3 дня, теги до маскирования, лист «Համադրում», CLI `--own-account.add`; 36 тестов (2026-10-05)
+- [ ] **C** Парсер MT940 (выписка SWIFT) → те же bank_transactions
 - [x] **C** Недельный XLSX-отчёт: 4 листа на армянском, CLI `--report.run=true`, e2e-тест импорт→commit→отчёт; образец `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` (2026-10-02)
 - [x] **C** CLI пилота: `--tenant.create`, `--import.run` с JSON-mapping, `--report.run`; проверено реальным запуском jar; `docs/PILOT_RUNBOOK.md` (2026-10-02)
 - [ ] **C** LLM-adapter + eval-набор 20 кейсов из [[AI-ассистенты и границы]].

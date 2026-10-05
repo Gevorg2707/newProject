@@ -5,6 +5,10 @@ import am.retailai.kpi.KpiReport;
 import am.retailai.kpi.KpiService;
 import am.retailai.kpi.KpiSettings;
 import am.retailai.kpi.SkuKpi;
+import am.retailai.recon.ReconLine;
+import am.retailai.recon.ReconciliationReport;
+import am.retailai.recon.ReconciliationService;
+import am.retailai.recon.ReconciliationSettings;
 import am.retailai.tenant.TenantId;
 import am.retailai.tenant.TenantTransactions;
 import org.apache.poi.ss.usermodel.BorderStyle;
@@ -40,14 +44,21 @@ public class WeeklyReportService {
     private static final DateTimeFormatter DT = DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm");
 
     private final KpiService kpiService;
+    private final ReconciliationService reconciliation;
     private final TenantTransactions tenantTx;
 
-    public WeeklyReportService(KpiService kpiService, TenantTransactions tenantTx) {
+    public WeeklyReportService(KpiService kpiService, ReconciliationService reconciliation, TenantTransactions tenantTx) {
         this.kpiService = kpiService;
+        this.reconciliation = reconciliation;
         this.tenantTx = tenantTx;
     }
 
+    /**
+     * Runs reconciliation for the same period first (idempotent per period: it replaces the previous run), so the
+     * bank sheet always matches the data the report was built from.
+     */
     public byte[] generate(TenantId tenant, LocalDate from, LocalDate to, KpiSettings settings) {
+        ReconciliationReport recon = reconciliation.reconcile(tenant, from, to, ReconciliationSettings.defaults());
         KpiReport kpi = kpiService.compute(tenant, from, to, settings);
         String tenantName = tenantTx.inTenant(tenant, j -> j.sql("SELECT name FROM tenants WHERE id = :id")
             .param("id", tenant.value()).query(String.class).optional().orElse(tenant.toString()));
@@ -72,6 +83,7 @@ public class WeeklyReportService {
             skuSheet(wb, st, kpi);
             qualitySheet(wb, st, kpi, issues);
             sourcesSheet(wb, st, sources);
+            reconSheet(wb, st, recon);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             wb.write(out);
             return out.toByteArray();
@@ -182,6 +194,36 @@ public class WeeklyReportService {
         r++;
         text(s, st, r, "Նշում", "Բանկի մնացորդը ցուցադրվում է միայն աղբյուրի և ժամի հետ. հին տվյալը նշվում է «վերջին հայտնի մնացորդ»։");
         widths(s, 18, 20, 14, 9, 10, 10, 90);
+    }
+
+    private void reconSheet(XSSFWorkbook wb, Styles st, ReconciliationReport r) {
+        Sheet s = wb.createSheet(ReportLabels.SHEET_RECON);
+        int row = 0;
+        title(s, st, row++, "Բանկ ↔ վաճառք համադրում");
+        text(s, st, row++, "Մեթոդ", "CARD_SALES".equals(r.method())
+            ? "Քարտային վաճառք ↔ էքվայրինգի մուտքեր (վճարման եղանակը հայտնի է)"
+            : "Վճարման եղանակ չկա. մուտքը համեմատվում է օրվա ընդհանուր վաճառքի հետ (թույլ ապացույց, «հավանական»)");
+        number(s, st, row++, "Ներքին փոխանցումներ (սեփական հաշիվների միջև)", r.internalTransfers() + " հատ", "Չեն հաշվվում որպես եկամուտ կամ ծախս");
+        money(s, st, row++, "Ներքին փոխանցումների գումար", r.internalTransferAmount(), "");
+        number(s, st, row++, "Էքվայրինգ՝ համադրված / հավանական / չհամադրված",
+            r.settlementsMatched() + " / " + r.settlementsPlausible() + " / " + r.settlementsUnmatched(), "");
+        number(s, st, row++, "Քարտային վաճառքի օրեր առանց մուտքի", String.valueOf(r.salesDaysWithoutSettlement()), "Ստուգել բանկի հետ կամ քաղվածքի ամբողջականությունը");
+        pct(s, st, row++, "Միջին հաշվարկային միջնորդավճար", r.averageImpliedFeeRate(), "Վաճառք − մուտք, հաշվարկային, ոչ բանկի սակագին");
+        row++;
+        header(s, st, row++, "Տեսակ", "Կարգավիճակ", "Բանկի օր", "Վաճառքի օր", "Վաճառք", "Մուտք/ելք", "Տարբերություն", "Ուշացում (օր)", "Նշում");
+        for (ReconLine l : r.lines()) {
+            Row x = s.createRow(row++);
+            cell(x, 0, l.matchType(), st.text);
+            cell(x, 1, l.status(), st.text);
+            cell(x, 2, l.bankDate() == null ? "" : l.bankDate().format(D), st.text);
+            cell(x, 3, l.salesDate() == null ? "" : l.salesDate().format(D), st.text);
+            num(x, 4, l.salesAmount(), st.money);
+            num(x, 5, l.bankAmount(), st.money);
+            num(x, 6, l.difference(), st.money);
+            num(x, 7, l.lagDays() == null ? null : BigDecimal.valueOf(l.lagDays()), st.qty);
+            cell(x, 8, l.note(), st.text);
+        }
+        widths(s, 46, 14, 12, 12, 14, 14, 14, 12, 60);
     }
 
     // ---- cell helpers ----------------------------------------------------------------------------

@@ -72,5 +72,15 @@ java -jar target/retail-ai-platform-0.1.0-SNAPSHOT.jar --report.run=true \
 `--tenant.create`, `--import.run` (upload + commit with a JSON mapping), `--report.run`. Step-by-step: `docs/PILOT_RUNBOOK.md`.
 Sample mappings: `docs/samples/mappings/*.json`.
 
+## Bank ↔ sales reconciliation (V3, `ReconciliationService`)
+- **Internal transfers**: (a) own account digits registered with `--own-account.add` are detected at commit on the RAW
+  description, before masking; (b) mirrored pairs (debit on account A = credit on account B within 1 day) are found at
+  reconcile time. Both legs get `is_internal_transfer = true` so cash figures never count them as income/expense.
+- **Acquiring settlements**: statement lines tagged `acquiring` (tags are set at commit from a fixed banking vocabulary,
+  see `BankDescriptionTagger`) are matched to one sales day at lag 1, 0, 2, 3. With `payment_method` mapped:
+  MATCHED when the implied fee is 0–3%. Without it: only PLAUSIBLE (settlement ≤ day total). Unclaimed card-sales days
+  are reported. All thresholds are assumptions in `ReconciliationSettings`.
+- Runs automatically inside the weekly report (5th sheet «Համադրում»); a rerun replaces the previous result for the period.
+
 ## Next
-Reconciliation bank ↔ sales (internal transfers, T+1 acquiring) → MT940 parser → LLM adapter + 20-case eval set.
+MT940 parser → LLM adapter + 20-case eval set → payment_method in the HC mapping once a real export shows the column.

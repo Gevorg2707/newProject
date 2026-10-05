@@ -11,6 +11,7 @@ import java.nio.file.Path;
  * Pilot CLI entry points (no UI):
  *   --tenant.create="Shop name"                      → prints the new tenant id
  *   --import.run=true --tenant=<uuid> --file=sales.xlsx --mapping=hc_sales_v1.json [--by=name]
+ *   --own-account.add=<account digits> --label="Ameria reserve" --tenant=<uuid>
  * Report generation lives in ReportCommand (--report.run=true).
  * Without these options the runner does nothing, so it is safe to keep it always registered.
  */
@@ -27,6 +28,10 @@ public class ImportCommand implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         if (args.containsOption("tenant.create")) {
             cli.createTenant(args.getOptionValues("tenant.create").getFirst(), System.out);
+        }
+        if (args.containsOption("own-account.add")) {
+            String label = args.containsOption("label") ? args.getOptionValues("label").getFirst() : "own account";
+            cli.addOwnAccount(TenantId.of(required(args, "tenant")), label, args.getOptionValues("own-account.add").getFirst(), System.out);
         }
         if (args.containsOption("import.run") && "true".equals(args.getOptionValues("import.run").getFirst())) {
             TenantId tenant = TenantId.of(required(args, "tenant"));

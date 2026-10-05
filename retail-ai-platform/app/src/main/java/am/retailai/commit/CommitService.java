@@ -125,14 +125,15 @@ public class CommitService {
         return jdbc.sql("""
                 INSERT INTO sale_lines (tenant_id, import_batch_id, source_system, source_record_id, document_number, occurred_at,
                     operation_type, product_id, sku_code, quantity, gross_amount, discount_amount, vat_amount, cogs_amount,
-                    currency, vat_included, warehouse)
-                VALUES (:t, :b, :src, :rid, :doc, :at, :op, :pid, :sku, :qty, :gross, :disc, :vat, :cogs, :cur, :vatinc, :wh)
+                    currency, vat_included, warehouse, payment_method)
+                VALUES (:t, :b, :src, :rid, :doc, :at, :op, :pid, :sku, :qty, :gross, :disc, :vat, :cogs, :cur, :vatinc, :wh, :pm)
                 ON CONFLICT (tenant_id, source_system, source_record_id) DO NOTHING
                 """)
             .param("t", tenant.value()).param("b", batch).param("src", source).param("rid", r.sourceRecordId)
             .param("doc", r.text("document_number")).param("at", occurredAt).param("op", operation).param("pid", productId)
             .param("sku", sku).param("qty", qty).param("gross", gross).param("disc", discount).param("vat", vat).param("cogs", cogs)
             .param("cur", currency).param("vatinc", s.vatIncluded()).param("wh", r.text("warehouse"))
+            .param("pm", r.text("payment_method"))
             .update();
     }
 
@@ -231,11 +232,20 @@ public class CommitService {
                 "bal", balance == null ? "" : balance.toPlainString(), "desc", r.text("description") == null ? "" : r.text("description")));
             r.warn("txn_id_derived", "txn_id", "No bank reference; id derived from date+amount+balance+description");
         }
+        // Own-account detection must run on the RAW description/counterparty: masking below removes the digits.
+        String rawText = String.join(" ", java.util.Objects.requireNonNullElse(r.text("description"), ""),
+            java.util.Objects.requireNonNullElse(r.text("counterparty_account"), "")).replaceAll("[\\s-]", "");
+        List<String> ownFragments = jdbc.sql("SELECT number_fragment FROM tenant_own_accounts").query(String.class).list();
+        boolean internal = ownFragments.stream().anyMatch(rawText::contains);
+
         return jdbc.sql("""
-                INSERT INTO bank_transactions (tenant_id, import_batch_id, account_ref, txn_id, occurred_at, amount, currency, balance_after, description)
-                VALUES (:t, :b, :acc, :txn, :at, :amt, :cur, :bal, :desc)
+                INSERT INTO bank_transactions (tenant_id, import_batch_id, account_ref, txn_id, occurred_at, amount, currency, balance_after,
+                    description, is_internal_transfer, internal_transfer_reason, description_tags)
+                VALUES (:t, :b, :acc, :txn, :at, :amt, :cur, :bal, :desc, :internal, :reason, :tags)
                 ON CONFLICT (tenant_id, account_ref, txn_id) DO NOTHING
                 """)
+            .param("internal", internal).param("reason", internal ? "own_account_marker" : null)
+            .param("tags", BankDescriptionTagger.tags(r.text("description")).toArray(String[]::new))
             .param("t", tenant.value()).param("b", batch).param("acc", accountRef).param("txn", txnId).param("at", at).param("amt", amount)
             .param("cur", r.text("currency") != null ? r.text("currency") : s.currencyOr("AMD")).param("bal", balance)
             .param("desc", ValueConverters.maskDescription(r.text("description")))

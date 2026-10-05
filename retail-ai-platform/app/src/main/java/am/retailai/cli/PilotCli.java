@@ -8,6 +8,7 @@ import am.retailai.imports.ImportService;
 import am.retailai.mapping.ColumnMapping;
 import am.retailai.mapping.MappingRepository;
 import am.retailai.tenant.TenantId;
+import am.retailai.tenant.TenantTransactions;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
@@ -28,13 +29,16 @@ public class PilotCli {
     private final CommitService commits;
     private final MappingRepository mappings;
     private final JdbcClient jdbc;
+    private final TenantTransactions tenantTx;
     private final ObjectMapper json;
 
-    public PilotCli(ImportService imports, CommitService commits, MappingRepository mappings, JdbcClient jdbc, ObjectMapper json) {
+    public PilotCli(ImportService imports, CommitService commits, MappingRepository mappings, JdbcClient jdbc,
+                    TenantTransactions tenantTx, ObjectMapper json) {
         this.imports = imports;
         this.commits = commits;
         this.mappings = mappings;
         this.jdbc = jdbc;
+        this.tenantTx = tenantTx;
         this.json = json;
     }
 
@@ -42,6 +46,16 @@ public class PilotCli {
         UUID id = jdbc.sql("INSERT INTO tenants (name) VALUES (:n) RETURNING id").param("n", name).query(UUID.class).single();
         out.println("Tenant created: " + id + "  (" + name + ")");
         return new TenantId(id);
+    }
+
+    /** Registers an own account so statement lines mentioning it are treated as internal transfers. */
+    public void addOwnAccount(TenantId tenant, String label, String numberFragment, PrintStream out) {
+        String digits = numberFragment.replaceAll("[\\s-]", "");
+        tenantTx.inTenant(tenant, j -> j.sql("""
+                INSERT INTO tenant_own_accounts (tenant_id, label, number_fragment) VALUES (:t, :l, :n)
+                ON CONFLICT (tenant_id, number_fragment) DO UPDATE SET label = EXCLUDED.label
+                """).param("t", tenant.value()).param("l", label).param("n", digits).update());
+        out.println("Own account registered: " + label + " (..." + digits.substring(Math.max(0, digits.length() - 4)) + ")");
     }
 
     /** Upload + commit in one go. Returns the commit report; prints a human summary. */
