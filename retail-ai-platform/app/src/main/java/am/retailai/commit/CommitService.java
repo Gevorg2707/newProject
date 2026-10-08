@@ -219,7 +219,8 @@ public class CommitService {
             }
         }
         BigDecimal balance = r.decimal("balance_after", false).orElse(null);
-        String accountRef = s.accountRef() != null ? s.accountRef() : r.text("account_ref");
+        // A label from settings wins; an account number from the file is stored masked (only the last 4 digits).
+        String accountRef = s.accountRef() != null ? s.accountRef() : maskAccount(r.text("account_ref"));
         if (accountRef == null) {
             r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "account_ref",
                 "Account label must be set in mapping settings"));
@@ -253,6 +254,12 @@ public class CommitService {
     }
 
     // ---- helpers --------------------------------------------------------------------------------
+
+    private static String maskAccount(String raw) {
+        if (raw == null) return null;
+        String digits = raw.replaceAll("[^0-9]", "");
+        return digits.length() < 4 ? "acct ***" : "acct ***" + digits.substring(digits.length() - 4);
+    }
 
     private static boolean isReturn(String opRaw, MappingSettings s) {
         if (opRaw == null) return false;

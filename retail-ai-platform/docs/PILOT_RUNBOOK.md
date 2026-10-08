@@ -15,6 +15,7 @@ $J --own-account.add="1570 0123 4567 0001" --label="Ameria reserve" --tenant=<id
 $J --import.run=true --tenant=<id> --file=HC_sales_2026-07-01_2026-09-30.xlsx --mapping=../docs/samples/mappings/hc_sales_v1.json --by=gevorg
 $J --import.run=true --tenant=<id> --file=META_campaign_daily.csv           --mapping=../docs/samples/mappings/meta_campaign_daily_v1.json
 $J --import.run=true --tenant=<id> --file=BANK_statement.csv                --mapping=../docs/samples/mappings/bank_statement_credit_debit_v1.json
+$J --import.run=true --tenant=<id> --file=ameria_2026-09.sta                --mapping=../docs/samples/mappings/bank_mt940_v1.json   # MT940
 
 # 3. Weekly report
 $J --report.run=true --tenant=<id> --from=2026-09-01 --to=2026-09-30 --out=report.xlsx [--variable-cost=2000 --formulas-confirmed=true]
@@ -36,3 +37,7 @@ $J --report.run=true --tenant=<id> --from=2026-09-01 --to=2026-09-30 --out=repor
 - `SALES_WITHOUT_SETTLEMENT`: card sales with no acquiring credit. Usually a missing statement period, a different
   acquiring account, or a bank that books settlements in bulk. Ask before concluding anything.
 - The implied fee rate is sales − settlement. It is not the bank's tariff; compare with the acquiring contract.
+
+## MT940 rejected with "closing balance ... does not match"
+The statement is missing lines or was cut. Ask the client to re-export the full period. Nothing was imported, so
+re-running with the corrected file is safe.

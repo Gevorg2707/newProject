@@ -82,5 +82,13 @@ Sample mappings: `docs/samples/mappings/*.json`.
   are reported. All thresholds are assumptions in `ReconciliationSettings`.
 - Runs automatically inside the weekly report (5th sheet «Համադրում»); a rerun replaces the previous result for the period.
 
+## MT940 (`Mt940Parser`, files `.sta` / `.mt940` / `.940`)
+One row per `:61:` line with fixed keys (`value_date`, signed `amount`, `currency`, `account`, `reference`,
+`bank_reference`, `type_code`, `description` from `:86:`, running `balance_after`, `statement_ref`). Reversals:
+RC = negative, RD = positive. Each statement must satisfy opening + lines = closing (`:62F:`), otherwise the whole file
+is rejected with the reason and nothing is written. Use mapping `docs/samples/mappings/bank_mt940_v1.json` for any bank.
+Account numbers taken from the file are stored masked (`acct ***1234`); set `accountRef` in the mapping for a label.
+The tag structure is the SWIFT standard; the wording of `:86:` in Armenian banks is UNVERIFIED until a real statement.
+
 ## Next
-MT940 parser → LLM adapter + 20-case eval set → payment_method in the HC mapping once a real export shows the column.
+LLM adapter + 20-case eval set → payment_method in the HC mapping once a real export shows the column.

@@ -63,7 +63,7 @@ public class ImportService {
             try {
                 rows = parser.parse(new ByteArrayInputStream(content));
             } catch (IOException e) {
-                throw new UncheckedIOException("Cannot parse " + fileName, e);
+                throw new UncheckedIOException("Cannot parse " + fileName + ": " + e.getMessage(), e);
             }
 
             int inserted = 0, updated = 0;
