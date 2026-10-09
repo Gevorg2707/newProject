@@ -146,6 +146,23 @@ class KpiServiceIT {
     }
 
     @Test
+    void adSpendFromTheLast28Days_isFlaggedNotFinal_olderSpendIsNot() {
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Yerevan"));
+        UUID p = product("A-1045", "Shirt");
+        sale("Հ-1", today.minusDays(2).toString(), "SALE", p, "A-1045", "1", "36000", "0", "22000", false);
+        tenantTx.inTenant(tenant, j -> j.sql("""
+                INSERT INTO campaign_daily (tenant_id, import_batch_id, platform, date, campaign_id, campaign_name, spend, currency)
+                VALUES (:t, :b, 'meta', :d, 'c1', 'Shirts', 4000, 'AMD')
+                """).param("t", tenant.value()).param("b", batch).param("d", today.minusDays(2)).update());
+
+        KpiReport recent = kpi.compute(tenant, today.minusDays(29), today, KpiSettings.defaults());
+        KpiReport old = kpi.compute(tenant, from, to, KpiSettings.defaults());   // September 2026, no ads in it
+
+        assertThat(recent.flags()).contains(KpiFlags.ADS_NOT_FINAL);
+        assertThat(old.flags()).doesNotContain(KpiFlags.ADS_NOT_FINAL);
+    }
+
+    @Test
     void linesOutsidePeriod_areIgnored() {
         UUID p = product("A-1045", "Shirt");
         sale("Հ-0", "2026-08-31", "SALE", p, "A-1045", "1", "36000", "0", "22000", false);

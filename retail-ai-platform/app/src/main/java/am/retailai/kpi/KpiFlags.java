@@ -8,5 +8,6 @@ public enum KpiFlags {
     NO_INVENTORY_SNAPSHOT,    // days of stock unavailable
     LOW_VELOCITY_SAMPLE,      // fewer than 14 days of sales history in the period
     NO_MARKETING_DATA,        // contribution computed without ad spend
-    VARIABLE_COSTS_ASSUMED    // per-order costs (delivery, acquiring, returns) are 0 or an assumption, not fact
+    VARIABLE_COSTS_ASSUMED,   // per-order costs (delivery, acquiring, returns) are 0 or an assumption, not fact
+    ADS_NOT_FINAL             // ad spend for days within the last 28 days may still be restated by the platform
 }

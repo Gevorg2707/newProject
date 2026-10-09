@@ -77,6 +77,11 @@ public class KpiService {
             boolean anyMarketing = jdbc.sql("SELECT count(*) FROM campaign_daily WHERE date BETWEEN :from AND :to")
                 .param("from", from).param("to", to).query(Integer.class).single() > 0;
             if (!anyMarketing) flags.add(KpiFlags.NO_MARKETING_DATA);
+            // Meta: insights do not change after 28 days; newer days can still be restated (same rule as CommitService.is_final).
+            LocalDate finalBefore = LocalDate.now(java.time.ZoneId.of("Asia/Yerevan")).minusDays(28);
+            boolean adsNotFinal = jdbc.sql("SELECT count(*) FROM campaign_daily WHERE date BETWEEN :from AND :to AND date >= :fb")
+                .param("from", from).param("to", to).param("fb", finalBefore).query(Integer.class).single() > 0;
+            if (adsNotFinal) flags.add(KpiFlags.ADS_NOT_FINAL);
 
             // ---- aggregate per SKU ----
             Map<String, SkuAcc> perSku = new LinkedHashMap<>();

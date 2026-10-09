@@ -16,14 +16,15 @@ final class ReportLabels {
     static final String SHEET_RECON = "Համադրում";
     static final String SHEET_ADVICE = "Առաջարկներ";
 
-    static final Map<KpiFlags, String> FLAGS = Map.of(
-        KpiFlags.FORMULAS_NOT_CONFIRMED, "Բանաձևերը դեռ հաստատված չեն հաշվապահի կողմից (formula_v0)",
-        KpiFlags.VAT_UNKNOWN, "Որոշ տողերում ԱԱՀ-ի ներառումը հայտնի չէ. մաքուր վաճառքը հաշվված է առանց ուղղման",
-        KpiFlags.COGS_MISSING, "Որոշ ապրանքների ինքնարժեքը բացակայում է. համախառն շահույթը մասնակի է",
-        KpiFlags.NO_INVENTORY_SNAPSHOT, "Պահեստի մնացորդ չի ներմուծվել. պաշարի օրերը հասանելի չեն",
-        KpiFlags.LOW_VELOCITY_SAMPLE, "Վաճառքի օրերը 14-ից պակաս են. արագության գնահատականը թույլ է",
-        KpiFlags.NO_MARKETING_DATA, "Գովազդի ծախս չի ներմուծվել. ծածկույթը հաշվված է առանց մարքեթինգի",
-        KpiFlags.VARIABLE_COSTS_ASSUMED, "Պատվերի փոփոխական ծախսերը (առաքում, միջնորդավճար, վերադարձ) ենթադրություն են, ոչ փաստ"
+    static final Map<KpiFlags, String> FLAGS = Map.ofEntries(
+        Map.entry(KpiFlags.FORMULAS_NOT_CONFIRMED, "Բանաձևերը դեռ հաստատված չեն հաշվապահի կողմից (formula_v0)"),
+        Map.entry(KpiFlags.VAT_UNKNOWN, "Որոշ տողերում ԱԱՀ-ի ներառումը հայտնի չէ. մաքուր վաճառքը հաշվված է առանց ուղղման"),
+        Map.entry(KpiFlags.COGS_MISSING, "Որոշ ապրանքների ինքնարժեքը բացակայում է. համախառն շահույթը մասնակի է"),
+        Map.entry(KpiFlags.NO_INVENTORY_SNAPSHOT, "Պահեստի մնացորդ չի ներմուծվել. պաշարի օրերը հասանելի չեն"),
+        Map.entry(KpiFlags.LOW_VELOCITY_SAMPLE, "Վաճառքի օրերը 14-ից պակաս են. արագության գնահատականը թույլ է"),
+        Map.entry(KpiFlags.NO_MARKETING_DATA, "Գովազդի ծախս չի ներմուծվել. ծածկույթը հաշվված է առանց մարքեթինգի"),
+        Map.entry(KpiFlags.VARIABLE_COSTS_ASSUMED, "Պատվերի փոփոխական ծախսերը (առաքում, միջնորդավճար, վերադարձ) ենթադրություն են, ոչ փաստ"),
+        Map.entry(KpiFlags.ADS_NOT_FINAL, "Վերջին 28 օրվա գովազդի ծախսը դեռ վերջնական չէ. հարթակը կարող է այն վերահաշվարկել")
     );
 
     static final Map<String, String> ISSUE_CODES = Map.ofEntries(

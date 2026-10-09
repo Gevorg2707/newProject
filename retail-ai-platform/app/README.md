@@ -103,5 +103,11 @@ The tag structure is the SWIFT standard; the wording of `:86:` in Armenian banks
   (`--recommendation.decide=<id> --decision=ACCEPTED|REJECTED|NEED_DATA --tenant --by`). Decisions trigger no external action.
 - 20-case eval coverage: `vault/40-Архитектура/Eval 20 кейсов — покрытие.md`.
 
+## Bank balance in the report (`CashPositionService`)
+Per account: the balance after the last line of the latest day ≤ period end. Statement row order is not trusted; the last
+line is the one whose balance is not any other same-day line's "balance before". Ambiguous → no number. Older than 3 days
+before period end → marked stale. A total per currency is shown only when all accounts share the same date.
+Ad spend from the last 28 days raises `ADS_NOT_FINAL` (Meta restates recent days).
+
 ## Next
-payment_method in the HC mapping once a real export shows the column; bank «last known balance» in the report.
+payment_method in the HC mapping once a real export shows the column.

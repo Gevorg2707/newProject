@@ -6,6 +6,9 @@ import am.retailai.kpi.KpiService;
 import am.retailai.kpi.KpiSettings;
 import am.retailai.kpi.SkuKpi;
 import am.retailai.advice.RecommendationService;
+import am.retailai.cash.AccountBalance;
+import am.retailai.cash.CashPosition;
+import am.retailai.cash.CashPositionService;
 import am.retailai.advice.StoredRecommendation;
 import am.retailai.recon.ReconLine;
 import am.retailai.recon.ReconciliationReport;
@@ -48,13 +51,16 @@ public class WeeklyReportService {
     private final KpiService kpiService;
     private final ReconciliationService reconciliation;
     private final RecommendationService recommendations;
+    private final CashPositionService cashPositions;
     private final TenantTransactions tenantTx;
 
     public WeeklyReportService(KpiService kpiService, ReconciliationService reconciliation,
-                               RecommendationService recommendations, TenantTransactions tenantTx) {
+                               RecommendationService recommendations, CashPositionService cashPositions,
+                               TenantTransactions tenantTx) {
         this.kpiService = kpiService;
         this.reconciliation = reconciliation;
         this.recommendations = recommendations;
+        this.cashPositions = cashPositions;
         this.tenantTx = tenantTx;
     }
 
@@ -66,6 +72,7 @@ public class WeeklyReportService {
         ReconciliationReport recon = reconciliation.reconcile(tenant, from, to, ReconciliationSettings.defaults());
         KpiReport kpi = kpiService.compute(tenant, from, to, settings);
         List<StoredRecommendation> advice = recommendations.generate(tenant, from, to, settings);
+        CashPosition cash = cashPositions.asOf(tenant, to);
         String tenantName = tenantTx.inTenant(tenant, j -> j.sql("SELECT name FROM tenants WHERE id = :id")
             .param("id", tenant.value()).query(String.class).optional().orElse(tenant.toString()));
         List<Map<String, Object>> issues = tenantTx.inTenant(tenant, j -> j.sql("""
@@ -85,7 +92,7 @@ public class WeeklyReportService {
 
         try (XSSFWorkbook wb = new XSSFWorkbook()) {
             Styles st = new Styles(wb);
-            summarySheet(wb, st, tenantName, kpi);
+            summarySheet(wb, st, tenantName, kpi, cash);
             skuSheet(wb, st, kpi);
             qualitySheet(wb, st, kpi, issues);
             sourcesSheet(wb, st, sources);
@@ -101,7 +108,7 @@ public class WeeklyReportService {
 
     // ---- sheets ----------------------------------------------------------------------------------
 
-    private void summarySheet(XSSFWorkbook wb, Styles st, String tenantName, KpiReport k) {
+    private void summarySheet(XSSFWorkbook wb, Styles st, String tenantName, KpiReport k, CashPosition cash) {
         Sheet s = wb.createSheet(ReportLabels.SHEET_SUMMARY);
         int r = 0;
         title(s, st, r++, "Շաբաթական հաշվետվություն. " + tenantName);
@@ -122,6 +129,8 @@ public class WeeklyReportService {
         number(s, st, r++, "Վաճառքի տողեր / վերադարձի տողեր", k.saleLines() + " / " + k.returnLines(), "");
         number(s, st, r++, "Վաճառքի օրեր շրջանում", String.valueOf(k.daysWithSales()), "");
         r++;
+        r = cashBlock(s, st, r, cash);
+        r++;
         header(s, st, r++, "Տվյալների վստահելիություն", "", "");
         if (k.flags().isEmpty()) {
             text(s, st, r++, "—", "Նշումներ չկան");
@@ -132,6 +141,36 @@ public class WeeklyReportService {
         r++;
         text(s, st, r, "Կարևոր", "Այս թվերը որոշումների որակը բարելավելու համար են. դրանք վաճառքի աճի երաշխիք չեն և հաշվապահական հաշվետվություն չեն փոխարինում։");
         widths(s, 44, 22, 90);
+    }
+
+    /** Bank balances: only with source and date; old ones are labelled; no total across different dates. */
+    private int cashBlock(Sheet s, Styles st, int r, CashPosition cash) {
+        header(s, st, r++, "Բանկային մնացորդ (կանխիկ, ոչ շահույթ)", "Գումար", "Աղբյուր և ամսաթիվ");
+        if (cash.accounts().isEmpty()) {
+            text(s, st, r++, "Բանկ", "Բանկային քաղվածք չի ներմուծվել. մնացորդ չի ցուցադրվում");
+            return r;
+        }
+        for (AccountBalance a : cash.accounts()) {
+            String note;
+            if ("ambiguous_order".equals(a.note())) {
+                note = "Մնացորդը չի ցուցադրվում. " + a.asOf().format(D) + " օրվա գործարքների հերթականությունը պարզ չէ (" + a.sourceFile() + ")";
+            } else if ("no_balance_column".equals(a.note())) {
+                note = "Քաղվածքում մնացորդի սյունակ չկա (" + a.sourceFile() + ")";
+            } else {
+                note = "Վերջին հայտնի մնացորդ " + a.asOf().format(D) + " · աղբյուր՝ " + a.sourceFile()
+                    + ", ներմուծված " + a.importedOn().format(D) + (a.stale() ? " · հին է, թարմացնել քաղվածքը" : "");
+            }
+            money(s, st, r++, a.accountRef() + " (" + a.currency() + ")", a.balance(), note);
+        }
+        if (!cash.totalsByCurrency().isEmpty()) {
+            for (var e : cash.totalsByCurrency().entrySet()) {
+                money(s, st, r++, "Ընդամենը բանկում (" + e.getKey() + ")", e.getValue(),
+                    cash.accounts().getFirst().asOf().format(D) + " դրությամբ. սա շահույթ կամ ազատ ծախսելի գումար չէ");
+            }
+        } else if (cash.datesDiffer()) {
+            text(s, st, r++, "Ընդամենը", "Չի հաշվվում. հաշիվների մնացորդները տարբեր ամսաթվերի են");
+        }
+        return r;
     }
 
     private void skuSheet(XSSFWorkbook wb, Styles st, KpiReport k) {

@@ -83,6 +83,7 @@ class WeeklyReportServiceIT {
             assertThat(textColumnContains(summary, 0, "FORMULAS_NOT_CONFIRMED")).isTrue();
             assertThat(textColumnContains(summary, 1, "հաշվապահի")).isTrue();      // flag explained in Armenian
             assertThat(textColumnContains(summary, 0, "VAT_UNKNOWN")).isFalse();  // VAT basis was confirmed in mapping
+            assertThat(textColumnContains(summary, 1, "Բանկային քաղվածք չի ներմուծվել")).isTrue(); // no bank file → no balance shown
 
             Sheet sku = wb.getSheetAt(1);
             assertThat(sku.getPhysicalNumberOfRows()).isEqualTo(1 + 5);            // header + 5 synthetic SKUs
@@ -96,6 +97,26 @@ class WeeklyReportServiceIT {
             Sheet sources = wb.getSheetAt(3);
             assertThat(textColumnContains(sources, 0, "HC_TRADE")).isTrue();
             assertThat(textColumnContains(sources, 2, "committed")).isTrue();
+        }
+    }
+
+    @Test
+    void bankBalance_isShownAsLastKnown_withDateAndSourceFile() throws IOException {
+        TenantId tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('Cash Report Shop') RETURNING id").query(UUID.class).single());
+        var mf = am.retailai.cli.MappingFile.read(Path.of("src/test/resources/fixtures/bank_mt940_v1.json"), tools.jackson.databind.json.JsonMapper.builder().build());
+        ColumnMapping mapping = mappings.save(tenant, mf.toMapping());
+        ImportResult up = importService.upload(tenant, SourceSystem.BANK, "ameria_2026-09.sta",
+            Fixtures.bytes("fixtures/synthetic_statement.sta"), "acc", mapping.settings().idColumns());
+        commitService.commit(tenant, up.batchId(), mapping);
+
+        byte[] xlsx = reports.generate(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());
+
+        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            Sheet summary = wb.getSheetAt(0);
+            assertThat(textColumnContains(summary, 0, "acct ***0000")).isTrue();
+            assertThat(textColumnContains(summary, 2, "Վերջին հայտնի մնացորդ 02.09.2026")).isTrue();
+            assertThat(textColumnContains(summary, 2, "ameria_2026-09.sta")).isTrue();
+            assertThat(numericByLabel(summary, "acct ***0000 (AMD)")).isEqualTo(2148000.0);
         }
     }
 

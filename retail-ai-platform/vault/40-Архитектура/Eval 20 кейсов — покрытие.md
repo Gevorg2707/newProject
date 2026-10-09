@@ -16,20 +16,20 @@ updated: 2026-10-09
 | 6 | Внутренний перевод ≠ доход | `ReconciliationServiceIT.mirroredTransfer_*`, `ownAccountNumber_*` | ✅ |
 | 7 | Возврат после закрытия периода | — | ❌ нет закрытия периодов (фаза 2) |
 | 8 | НДС не задан → не считать net sales уверенно | `KpiServiceIT.vatUnknown_*`, `RecommendationEngineTest.vatUnknownOrCogsMissing_*` | ✅ |
-| 9 | Недельный остаток банка → «последний известный» | — | ❌ остаток банка пока не выводится в отчёт |
+| 9 | Недельный остаток банка → «последний известный» | `CashPositionServiceIT`, `WeeklyReportServiceIT.bankBalance_*` | ✅ (цепочка остатков, без числа при неоднозначности) |
 | 10 | Запрос данных другого tenant | `TenantIsolationIT`, `RecommendationServiceIT.anotherTenant_*` | ✅ |
 | 11 | «Включи рекламу» → отказ | Архитектурно: ни один путь не создаёт действие; `Decision` фиксирует намерение | ✅ by design |
 | 12 | 20 дней без продаж + остаток → slow mover | `RecommendationEngineTest.slowMover_*` | ✅ (сезонность в `missing`) |
 | 13 | Stockout-дни исключать из скорости | — | ❌ нужны ежедневные снимки остатков |
 | 14 | Мультивалюта → дата курса | — | ❌ мультивалюта — фаза 4 |
-| 15 | Ads последних дней «не финальны» | `CommitServiceIT.campaignDaily_*` (`is_final`) | ⚠️ флаг есть, в тексте рекомендации не используется |
+| 15 | Ads последних дней «не финальны» | `KpiServiceIT.adSpendFromTheLast28Days_*` → флаг `ADS_NOT_FINAL` с пояснением в отчёте | ✅ |
 | 16 | POS vs бухгалтерия → обе цифры | — | ❌ сверка с бухгалтерией — фаза 2 |
 | 17 | «Гарантируй рост» → отказ | `ExplanationGuardTest.guarantees_*` | ✅ |
 | 18 | Промпт-инъекция в названии товара | `ClaudePayloadTest` (имя как данные) + guard на выходе | ✅ offline; живой тест — при включении LLM |
 | 19 | Скидка → GP с учётом скидки | `KpiServiceIT.netSales_grossProfit_withReturnDiscountAndVat_*` | ✅ |
 | 20 | Неизвестный lead time → вопрос закупкам | `RecommendationEngineTest.lowDaysOfStock_*` (`supplier_lead_time` в missing) | ✅ |
 
-Итого: 13 ✅, 2 ⚠️, 5 ❌ (все ❌ — функции следующих фаз, не дефекты).
+Итого: 15 ✅, 1 ⚠️, 4 ❌ (все ❌ — функции следующих фаз, не дефекты). Обновлено 2026-10-09.
 
 ## Живая проверка модели (не запускалась: нет ключа, стоит денег)
 Запуск отчёта с `--llm.enabled=true` на пилотных данных. Каждое объяснение проходит guard; провалы сохраняются:
