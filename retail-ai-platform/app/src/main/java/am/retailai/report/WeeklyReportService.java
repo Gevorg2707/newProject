@@ -5,6 +5,8 @@ import am.retailai.kpi.KpiReport;
 import am.retailai.kpi.KpiService;
 import am.retailai.kpi.KpiSettings;
 import am.retailai.kpi.SkuKpi;
+import am.retailai.advice.RecommendationService;
+import am.retailai.advice.StoredRecommendation;
 import am.retailai.recon.ReconLine;
 import am.retailai.recon.ReconciliationReport;
 import am.retailai.recon.ReconciliationService;
@@ -45,11 +47,14 @@ public class WeeklyReportService {
 
     private final KpiService kpiService;
     private final ReconciliationService reconciliation;
+    private final RecommendationService recommendations;
     private final TenantTransactions tenantTx;
 
-    public WeeklyReportService(KpiService kpiService, ReconciliationService reconciliation, TenantTransactions tenantTx) {
+    public WeeklyReportService(KpiService kpiService, ReconciliationService reconciliation,
+                               RecommendationService recommendations, TenantTransactions tenantTx) {
         this.kpiService = kpiService;
         this.reconciliation = reconciliation;
+        this.recommendations = recommendations;
         this.tenantTx = tenantTx;
     }
 
@@ -60,6 +65,7 @@ public class WeeklyReportService {
     public byte[] generate(TenantId tenant, LocalDate from, LocalDate to, KpiSettings settings) {
         ReconciliationReport recon = reconciliation.reconcile(tenant, from, to, ReconciliationSettings.defaults());
         KpiReport kpi = kpiService.compute(tenant, from, to, settings);
+        List<StoredRecommendation> advice = recommendations.generate(tenant, from, to, settings);
         String tenantName = tenantTx.inTenant(tenant, j -> j.sql("SELECT name FROM tenants WHERE id = :id")
             .param("id", tenant.value()).query(String.class).optional().orElse(tenant.toString()));
         List<Map<String, Object>> issues = tenantTx.inTenant(tenant, j -> j.sql("""
@@ -84,6 +90,7 @@ public class WeeklyReportService {
             qualitySheet(wb, st, kpi, issues);
             sourcesSheet(wb, st, sources);
             reconSheet(wb, st, recon);
+            adviceSheet(wb, st, advice);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
             wb.write(out);
             return out.toByteArray();
@@ -224,6 +231,28 @@ public class WeeklyReportService {
             cell(x, 8, l.note(), st.text);
         }
         widths(s, 46, 14, 12, 12, 14, 14, 14, 12, 60);
+    }
+
+    private void adviceSheet(XSSFWorkbook wb, Styles st, List<StoredRecommendation> advice) {
+        Sheet s = wb.createSheet(ReportLabels.SHEET_ADVICE);
+        int row = 0;
+        title(s, st, row++, "Քննարկելի առաջարկներ (որոշումը՝ մարդու)");
+        text(s, st, row++, "Կարևոր", "Առաջարկները հաշվարկված են կանոններով. ոչ մի գնում, գովազդ կամ վճարում ավտոմատ չի կատարվում։");
+        row++;
+        header(s, st, row++, "ID", "Տեսակ", "Ապրանք", "Վստահություն", "Կարգավիճակ", "Բացատրություն", "Աղբյուր", "Որոշում");
+        for (StoredRecommendation a : advice) {
+            Row x = s.createRow(row++);
+            cell(x, 0, a.id().toString(), st.note);
+            cell(x, 1, a.recommendation().type().name(), st.text);
+            cell(x, 2, a.recommendation().skuCode(), st.text);
+            cell(x, 3, a.recommendation().confidence().name(), st.text);
+            cell(x, 4, a.recommendation().status().name(), st.text);
+            cell(x, 5, a.explanation().textHy(), st.text);
+            cell(x, 6, a.explanation().provider() + (a.explanation().fallbackReason() == null ? "" : " (fallback: " + a.explanation().fallbackReason() + ")"), st.note);
+            cell(x, 7, "ACCEPTED / REJECTED / NEED_DATA", st.note);
+        }
+        if (advice.isEmpty()) text(s, st, row, "—", "Այս շրջանի համար առաջարկ չկա");
+        widths(s, 38, 16, 12, 14, 14, 100, 22, 30);
     }
 
     // ---- cell helpers ----------------------------------------------------------------------------

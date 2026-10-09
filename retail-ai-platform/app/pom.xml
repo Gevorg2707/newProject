@@ -17,6 +17,7 @@
     <java.version>25</java.version>
     <poi.version>5.5.1</poi.version>
     <commons-csv.version>1.14.1</commons-csv.version>
+    <anthropic.version>2.34.0</anthropic.version>
   </properties>
   <dependencies>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-jdbc</artifactId></dependency>
@@ -27,6 +28,7 @@
     <dependency><groupId>org.postgresql</groupId><artifactId>postgresql</artifactId></dependency>
     <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId><version>${poi.version}</version></dependency>
     <dependency><groupId>org.apache.commons</groupId><artifactId>commons-csv</artifactId><version>${commons-csv.version}</version></dependency>
+    <dependency><groupId>com.anthropic</groupId><artifactId>anthropic-java</artifactId><version>${anthropic.version}</version></dependency>
     <dependency><groupId>org.springframework.boot</groupId><artifactId>spring-boot-starter-test</artifactId><scope>test</scope></dependency>
   </dependencies>
   <build>

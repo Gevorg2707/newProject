@@ -1,5 +1,7 @@
 package am.retailai.cli;
 
+import am.retailai.advice.Decision;
+import am.retailai.advice.RecommendationService;
 import am.retailai.tenant.TenantId;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -12,6 +14,7 @@ import java.nio.file.Path;
  *   --tenant.create="Shop name"                      → prints the new tenant id
  *   --import.run=true --tenant=<uuid> --file=sales.xlsx --mapping=hc_sales_v1.json [--by=name]
  *   --own-account.add=<account digits> --label="Ameria reserve" --tenant=<uuid>
+ *   --recommendation.decide=<id> --decision=ACCEPTED|REJECTED|NEED_DATA --tenant=<uuid> --by=name [--comment="..."]
  * Report generation lives in ReportCommand (--report.run=true).
  * Without these options the runner does nothing, so it is safe to keep it always registered.
  */
@@ -19,15 +22,24 @@ import java.nio.file.Path;
 public class ImportCommand implements ApplicationRunner {
 
     private final PilotCli cli;
+    private final RecommendationService recommendations;
 
-    public ImportCommand(PilotCli cli) {
+    public ImportCommand(PilotCli cli, RecommendationService recommendations) {
         this.cli = cli;
+        this.recommendations = recommendations;
     }
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
         if (args.containsOption("tenant.create")) {
             cli.createTenant(args.getOptionValues("tenant.create").getFirst(), System.out);
+        }
+        if (args.containsOption("recommendation.decide")) {
+            java.util.UUID id = java.util.UUID.fromString(args.getOptionValues("recommendation.decide").getFirst());
+            Decision d = Decision.valueOf(required(args, "decision").toUpperCase(java.util.Locale.ROOT));
+            String comment = args.containsOption("comment") ? args.getOptionValues("comment").getFirst() : null;
+            recommendations.decide(TenantId.of(required(args, "tenant")), id, d, required(args, "by"), comment);
+            System.out.println("Decision recorded: " + id + " -> " + d + " (no external action is taken)");
         }
         if (args.containsOption("own-account.add")) {
             String label = args.containsOption("label") ? args.getOptionValues("label").getFirst() : "own account";

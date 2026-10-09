@@ -45,7 +45,7 @@ class WeeklyReportServiceIT {
     @Autowired JdbcClient jdbc;
 
     @Test
-    void reportHasFiveSheets_summaryNumbersMatchKpi_andFlagsAreExplained() throws IOException {
+    void reportHasSixSheets_summaryNumbersMatchKpi_andFlagsAreExplained() throws IOException {
         TenantId tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('Report Shop') RETURNING id").query(UUID.class).single());
         var settings = new MappingSettings(true, "AMD", "dd.MM.yyyy", ".", List.of("Փաստաթղթի համար", "Ապրանքի կոդ"),
             null, List.of("Վերադարձ գնորդից"), "Asia/Yerevan", null, null);
@@ -63,12 +63,14 @@ class WeeklyReportServiceIT {
         Files.write(Path.of("target/weekly-report-sample.xlsx"), xlsx);
 
         try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
-            assertThat(wb.getNumberOfSheets()).isEqualTo(5);
+            assertThat(wb.getNumberOfSheets()).isEqualTo(6);
             assertThat(wb.getSheetName(0)).isEqualTo("Ամփոփում");
             assertThat(wb.getSheetName(1)).isEqualTo("SKU");
             assertThat(wb.getSheetName(2)).isEqualTo("Տվյալների որակ");
             assertThat(wb.getSheetName(3)).isEqualTo("Աղբյուրներ");
             assertThat(wb.getSheetName(4)).isEqualTo("Համադրում");
+            assertThat(wb.getSheetName(5)).isEqualTo("Առաջարկներ");
+            assertThat(textColumnContains(wb.getSheetAt(5), 5, "Վստահություն")).isTrue();   // template explanation present
             assertThat(textColumnContains(wb.getSheetAt(4), 1, "Վճարման եղանակ չկա")).isTrue(); // synthetic HC file has no payment method
 
             Sheet summary = wb.getSheetAt(0);

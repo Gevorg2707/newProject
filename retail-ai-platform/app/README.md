@@ -90,5 +90,18 @@ is rejected with the reason and nothing is written. Use mapping `docs/samples/ma
 Account numbers taken from the file are stored masked (`acct ***1234`); set `accountRef` in the mapping for a label.
 The tag structure is the SWIFT standard; the wording of `:86:` in Armenian banks is UNVERIFIED until a real statement.
 
+## Recommendations and the LLM layer (V4, `advice` package)
+- `RecommendationEngine` (deterministic): RESTOCK, AD_TEST (founder's formula: net price − COGS − variable cost =
+  max acquisition cost), SLOW_MOVER, ASK_ACCOUNTANT; max 3, accountant question kept when VAT/COGS are unknown.
+  Stale data (> 14 days since last import) → LOW confidence, NEEDS_DATA.
+- `GuardedExplainer` → optional `ClaudeExplanationProvider` (Anthropic Java SDK, `claude-opus-5-5`, effort `low`) →
+  `ExplanationGuard` (numbers only from facts, no causal claims without an experiment, no guarantees) → on any failure the
+  deterministic `TemplateExplanationProvider`, with `fallback_reason` stored.
+- LLM is **off by default**. Enable: `--llm.enabled=true` with Anthropic credentials; optional `--llm.model=...`, `--llm.effort=...`.
+  Only aggregates and product data are sent. Confirm the legal basis for cross-border transfer before using it with clients.
+- Stored with provenance in `recommendations`; human decisions in `recommendation_decisions`
+  (`--recommendation.decide=<id> --decision=ACCEPTED|REJECTED|NEED_DATA --tenant --by`). Decisions trigger no external action.
+- 20-case eval coverage: `vault/40-Архитектура/Eval 20 кейсов — покрытие.md`.
+
 ## Next
-LLM adapter + 20-case eval set → payment_method in the HC mapping once a real export shows the column.
+payment_method in the HC mapping once a real export shows the column; bank «last known balance» in the report.
