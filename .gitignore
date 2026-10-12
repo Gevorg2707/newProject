@@ -1,0 +1,3 @@
+# Manifests written by the mypowers commit-gate hook on every commit (not project content).
+# The project vault is retail-ai-platform/vault/ and stays tracked.
+/vault/
