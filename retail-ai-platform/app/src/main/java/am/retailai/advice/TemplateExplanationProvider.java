@@ -23,6 +23,7 @@ public class TemplateExplanationProvider implements ExplanationProvider {
         Map.entry("fresh_inventory", "պահեստի թարմ մնացորդ"),
         Map.entry("inventory_check", "պահեստի մնացորդի ստուգում (բացասական մնացորդ կա)"),
         Map.entry("single_currency", "մեկ արժույթով տվյալներ"),
+        Map.entry("sku_mapping_check", "ապրանքի կոդի ստուգում (կոդը կարող է փոխված լինել)"),
         Map.entry("vat_basis", "ԱԱՀ-ի ներառումը գներում"),
         Map.entry("cogs", "որոշ ապրանքների ինքնարժեքը"),
         Map.entry("formula_confirmation", "բանաձևերի հաստատումը հաշվապահի կողմից"),

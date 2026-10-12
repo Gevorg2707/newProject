@@ -92,6 +92,34 @@ public class PilotCli {
         return rows;
     }
 
+    /**
+     * One product under two codes (renamed in HC, or different codes in sales and stock exports): moves every sale line,
+     * stock row and alias of {@code fromCode} to {@code intoCode} and removes the old product. KPIs group by product.
+     */
+    public void mergeProducts(TenantId tenant, String fromCode, String intoCode, PrintStream out) {
+        if (fromCode.equals(intoCode)) throw new IllegalArgumentException("Nothing to merge: both codes are '" + fromCode + "'");
+        String result = tenantTx.inTenant(tenant, j -> {
+            UUID from = productId(j, fromCode);
+            UUID into = productId(j, intoCode);
+            int sales = j.sql("UPDATE sale_lines SET product_id = :into WHERE product_id = :from").param("into", into).param("from", from).update();
+            int stock = j.sql("UPDATE inventory_snapshots SET product_id = :into WHERE product_id = :from").param("into", into).param("from", from).update();
+            j.sql("UPDATE product_aliases SET product_id = :into WHERE product_id = :from").param("into", into).param("from", from).update();
+            j.sql("DELETE FROM products WHERE id = :from").param("from", from).update();
+            j.sql("""
+                    INSERT INTO audit_events (tenant_id, actor, action, entity_type, entity_id, details)
+                    VALUES (:t, 'cli', 'product.merge', 'product', :id, jsonb_build_object('from', :from, 'sales', :sales, 'stock', :stock))
+                    """).param("t", tenant.value()).param("id", into.toString())
+                .param("from", fromCode).param("sales", sales).param("stock", stock).update();
+            return sales + " sale lines, " + stock + " stock rows";
+        });
+        out.println("Merged product " + fromCode + " into " + intoCode + ": " + result);
+    }
+
+    private static UUID productId(org.springframework.jdbc.core.simple.JdbcClient j, String code) {
+        return j.sql("SELECT id FROM products WHERE sku_code = :c").param("c", code).query(UUID.class).optional()
+            .orElseThrow(() -> new IllegalArgumentException("Product '" + code + "' not found"));
+    }
+
     /** Registers an own account so statement lines mentioning it are treated as internal transfers. */
     public void addOwnAccount(TenantId tenant, String label, String numberFragment, PrintStream out) {
         String digits = numberFragment.replaceAll("[\\s-]", "");

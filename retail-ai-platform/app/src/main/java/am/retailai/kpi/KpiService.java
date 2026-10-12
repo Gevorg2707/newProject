@@ -52,7 +52,7 @@ public class KpiService {
 
             // One row per (sku, operation, vat_included, has_cogs) keeps the VAT conversion exact per group.
             List<Map<String, Object>> groups = jdbc.sql("""
-                    SELECT sl.sku_code, max(p.name) AS name, sl.operation_type, sl.vat_included,
+                    SELECT p.sku_code, max(p.name) AS name, sl.operation_type, sl.vat_included,
                            (sl.cogs_amount IS NOT NULL) AS has_cogs,
                            count(*) AS lines,
                            sum(sl.quantity) AS qty,
@@ -61,8 +61,8 @@ public class KpiService {
                            sum(coalesce(sl.cogs_amount, 0)) AS cogs
                     FROM sale_lines sl JOIN products p ON p.id = sl.product_id
                     WHERE sl.occurred_at >= :from AND sl.occurred_at < :to AND sl.currency = :cur
-                    GROUP BY sl.sku_code, sl.operation_type, sl.vat_included, (sl.cogs_amount IS NOT NULL)
-                    ORDER BY sl.sku_code
+                    GROUP BY p.sku_code, sl.operation_type, sl.vat_included, (sl.cogs_amount IS NOT NULL)
+                    ORDER BY p.sku_code
                     """)
                 .param("from", periodFrom).param("to", periodTo).param("cur", currency)
                 .query().listOfRows();
@@ -82,12 +82,12 @@ public class KpiService {
             jdbc.sql("""
                     WITH latest AS (
                         SELECT warehouse, max(as_of_date) AS d FROM inventory_snapshots WHERE as_of_date <= :to GROUP BY warehouse)
-                    SELECT i.sku_code, max(p.name) AS name, sum(greatest(i.quantity, 0)) AS qty,
+                    SELECT coalesce(p.sku_code, i.sku_code) AS sku_code, max(p.name) AS name, sum(greatest(i.quantity, 0)) AS qty,
                            bool_or(i.quantity < 0) AS negative, min(l.d) AS as_of
                     FROM inventory_snapshots i
                     JOIN latest l ON l.warehouse = i.warehouse AND i.as_of_date = l.d
                     LEFT JOIN products p ON p.id = i.product_id
-                    GROUP BY i.sku_code ORDER BY i.sku_code
+                    GROUP BY coalesce(p.sku_code, i.sku_code) ORDER BY 1
                     """).param("to", to).query().listOfRows()
                 .forEach(r -> onHand.put((String) r.get("sku_code"), new StockRow((String) r.get("name"), (BigDecimal) r.get("qty"),
                     (Boolean) r.get("negative"), ((java.sql.Date) r.get("as_of")).toLocalDate())));
@@ -179,6 +179,16 @@ public class KpiService {
 
             // Stock without any sale in the period is the worst slow mover: it must be listed too.
             onHand.forEach((sku, st) -> perSku.computeIfAbsent(sku, k -> new SkuAcc(k, st.name())));
+
+            // A product only ever seen in sales, or only ever in stock, while both sources have data: possibly one product
+            // under two codes. KPIs group by product, so --product.merge fixes it; until then the SKU is flagged.
+            Set<String> unclear = new java.util.HashSet<>(jdbc.sql("""
+                    SELECT p.sku_code FROM products p
+                    WHERE EXISTS (SELECT 1 FROM sale_lines) AND EXISTS (SELECT 1 FROM inventory_snapshots)
+                      AND EXISTS (SELECT 1 FROM sale_lines s WHERE s.product_id = p.id)
+                          <> EXISTS (SELECT 1 FROM inventory_snapshots i WHERE i.product_id = p.id)
+                    """).query(String.class).list());
+            perSku.values().stream().filter(a -> unclear.contains(a.sku)).forEach(a -> a.flags.add(KpiFlags.SKU_MAPPING_UNCLEAR));
 
             BigDecimal netSales = BigDecimal.ZERO, cogsTotal = BigDecimal.ZERO, netWithCogs = BigDecimal.ZERO;
             List<SkuKpi> skus = new ArrayList<>();

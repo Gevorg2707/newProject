@@ -28,7 +28,8 @@ final class ReportLabels {
         Map.entry(KpiFlags.INVENTORY_STALE, "Պահեստի մնացորդի վերջին տվյալը շրջանի ավարտից 7 օրից ավելի հին է"),
         Map.entry(KpiFlags.NEGATIVE_STOCK, "Պահեստում բացասական մնացորդ կա (հաշվառման սխալ). հաշվվել է որպես 0"),
         Map.entry(KpiFlags.MIXED_CURRENCY, "Այլ արժույթով տողերը կամ գովազդի ծախսը չեն ներառվել ընդհանուր գումարներում"),
-        Map.entry(KpiFlags.RETURN_COST_ESTIMATED, "Առանց ինքնարժեքի վերադարձները գնահատվել են ապրանքի միջին ինքնարժեքով (ենթադրություն)")
+        Map.entry(KpiFlags.RETURN_COST_ESTIMATED, "Առանց ինքնարժեքի վերադարձները գնահատվել են ապրանքի միջին ինքնարժեքով (ենթադրություն)"),
+        Map.entry(KpiFlags.SKU_MAPPING_UNCLEAR, "Ապրանքը կա միայն վաճառքում կամ միայն մնացորդում. հնարավոր է՝ կոդը փոխվել է")
     );
 
     static final Map<String, String> ISSUE_CODES = Map.ofEntries(

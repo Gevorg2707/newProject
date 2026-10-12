@@ -26,6 +26,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class KpiServiceIT {
 
     @Autowired KpiService kpi;
+    @Autowired am.retailai.cli.PilotCli cli;
     @Autowired TenantTransactions tenantTx;
     @Autowired JdbcClient jdbc;
 
@@ -260,6 +261,28 @@ class KpiServiceIT {
         assertThat(r.grossProfit()).isEqualByComparingTo("13000.00");
         assertThat(r.cogsCoverage()).isEqualByComparingTo("0.6667");    // 70,000 of 105,000 turnover has a real cost
         assertThat(r.flags()).contains(KpiFlags.RETURN_COST_ESTIMATED, KpiFlags.COGS_MISSING);
+    }
+
+    @Test
+    void skuSeenOnlyInSalesOrOnlyInStock_isFlaggedUnclear_andAMergeJoinsThemInKpis() {
+        // C11: a renamed code looks like "out of stock" + "dead stock"; merging aliases used to change nothing in KPIs
+        UUID sold = product("A-1045", "Shirt");
+        UUID stocked = product("A1045", "Shirt M");
+        for (int d = 1; d <= 30; d++) sale("Հ-" + d, "2026-09-%02d".formatted(d), "SALE", sold, "A-1045", "1", "36000", "0", "22000", false);
+        snapshot(stocked, "A1045", "Main", "2026-09-30", "20");
+
+        KpiReport before = kpi.compute(tenant, from, to, KpiSettings.defaults());
+        assertThat(before.skus()).hasSize(2).allSatisfy(x -> assertThat(x.flags()).contains(KpiFlags.SKU_MAPPING_UNCLEAR));
+
+        cli.mergeProducts(tenant, "A1045", "A-1045", new java.io.PrintStream(new java.io.ByteArrayOutputStream()));
+        KpiReport after = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(after.skus()).hasSize(1);
+        SkuKpi shirt = after.skus().getFirst();
+        assertThat(shirt.skuCode()).isEqualTo("A-1045");
+        assertThat(shirt.onHand()).isEqualByComparingTo("20");
+        assertThat(shirt.unitsSold()).isEqualByComparingTo("30");
+        assertThat(shirt.flags()).doesNotContain(KpiFlags.SKU_MAPPING_UNCLEAR);
     }
 
     // ---- helpers ----

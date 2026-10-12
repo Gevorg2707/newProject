@@ -149,6 +149,17 @@ class RecommendationEngineTest {
         assertThat(r.missing()).contains("single_currency");
     }
 
+    @Test
+    void unclearSkuMapping_capsConfidenceAtMedium_andAsksForACheck() {
+        // C11
+        var sku = sku("A-1", "60", "0", "2100000", "1320000", "10", "2.000", "5.0", false, Set.of(KpiFlags.SKU_MAPPING_UNCLEAR));
+        var recs = engine.recommend(report(List.of(sku), Set.of()), costs2000, to, to, RecommendationSettings.defaults());
+
+        Recommendation r = find(recs, RecommendationType.RESTOCK);
+        assertThat(r.confidence()).isEqualTo(Confidence.MEDIUM);
+        assertThat(r.missing()).contains("sku_mapping_check");
+    }
+
     // ---- builders ----
     private SkuKpi sku(String code, String sold, String returned, String net, String cogs, String onHand, String velocity,
                        String days, boolean slow, Set<KpiFlags> flags) {

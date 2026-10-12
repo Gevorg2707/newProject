@@ -101,6 +101,10 @@ public class RecommendationEngine {
         List<String> miss = new ArrayList<>(missing);
 
         if (flags.contains(KpiFlags.LOW_VELOCITY_SAMPLE)) c = Confidence.MEDIUM;
+        if (flags.contains(KpiFlags.SKU_MAPPING_UNCLEAR)) {
+            if (c == Confidence.HIGH) c = Confidence.MEDIUM;
+            miss.add("sku_mapping_check");
+        }
         if (flags.contains(KpiFlags.COGS_MISSING)) {
             if (c == Confidence.HIGH) c = Confidence.MEDIUM;
             miss.add("cogs");
