@@ -14,8 +14,8 @@ public enum TargetEntity {
     INVENTORY_SNAPSHOT(List.of("sku_code", "warehouse", "quantity"),
         Set.of("sku_code", "sku_name", "unit", "warehouse", "quantity", "cost_per_unit", "sale_price", "as_of_date")),
     CAMPAIGN_DAILY(List.of("date", "campaign_name", "spend"),
-        Set.of("date", "campaign_id", "campaign_name", "adset_name", "spend", "impressions", "clicks", "results", "currency",
-            "platform")),
+        Set.of("date", "date_end", "campaign_id", "campaign_name", "adset_name", "spend", "impressions", "clicks", "results",
+            "currency", "platform")),
     BANK_TRANSACTION(List.of("occurred_at", "amount"),
         Set.of("occurred_at", "amount", "credit", "debit", "currency", "balance_after", "description", "txn_id", "account_ref",
             "counterparty_account"));

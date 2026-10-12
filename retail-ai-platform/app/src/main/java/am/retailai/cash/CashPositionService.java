@@ -29,9 +29,11 @@ public class CashPositionService {
     private static final ZoneId YEREVAN = ZoneId.of("Asia/Yerevan");
 
     private final TenantTransactions tenantTx;
+    private final java.time.Clock clock;
 
-    public CashPositionService(TenantTransactions tenantTx) {
+    public CashPositionService(TenantTransactions tenantTx, java.time.Clock clock) {
         this.tenantTx = tenantTx;
+        this.clock = clock;
     }
 
     private record Line(String accountRef, LocalDate day, BigDecimal amount, BigDecimal balanceAfter, String currency,
@@ -58,7 +60,10 @@ public class CashPositionService {
         Map<String, List<Line>> byAccount = lines.stream()
             .collect(Collectors.groupingBy(Line::accountRef, TreeMap::new, Collectors.toList()));
         List<AccountBalance> accounts = new ArrayList<>();
-        byAccount.forEach((account, day) -> accounts.add(lastKnown(account, day, to)));
+        // Staleness is measured from the earlier of the period end and today: a period that has not ended yet (C88).
+        LocalDate today = LocalDate.now(clock.withZone(YEREVAN));
+        LocalDate reference = today.isBefore(to) ? today : to;
+        byAccount.forEach((account, day) -> accounts.add(lastKnown(account, day, reference)));
 
         Map<String, BigDecimal> totals = new TreeMap<>();
         boolean datesDiffer = accounts.stream().map(AccountBalance::asOf).distinct().count() > 1;
@@ -70,9 +75,9 @@ public class CashPositionService {
         return new CashPosition(to, List.copyOf(accounts), Map.copyOf(totals), datesDiffer);
     }
 
-    private static AccountBalance lastKnown(String account, List<Line> day, LocalDate to) {
+    private static AccountBalance lastKnown(String account, List<Line> day, LocalDate reference) {
         Line any = day.getFirst();
-        boolean stale = any.day().isBefore(to.minusDays(STALE_AFTER_DAYS));
+        boolean stale = any.day().isBefore(reference.minusDays(STALE_AFTER_DAYS));
         List<Line> withBalance = day.stream().filter(l -> l.balanceAfter() != null).toList();
         if (withBalance.isEmpty()) {
             return new AccountBalance(account, any.currency(), null, any.day(), stale, "no_balance_column", any.fileName(), any.importedOn());

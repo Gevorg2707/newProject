@@ -84,6 +84,11 @@ public class ExplanationGuard {
             List<BigDecimal> values = interpretations(token);
             if (values.isEmpty() || values.stream().noneMatch(v -> matchesAny(v, allowed))) {
                 reasons.add("number not in facts: " + token);
+                continue;
+            }
+            Kind unit = unitAfter(scrubbed, m.end());
+            if (unit != null && values.stream().noneMatch(v -> factKindsOf(v, r).stream().anyMatch(k -> k == unit || k == Kind.ANY))) {
+                reasons.add("number " + token + " is written as " + unit + " but no fact of that kind has this value");
             }
         }
         return new GuardResult(reasons.isEmpty(), List.copyOf(reasons));
@@ -110,6 +115,46 @@ public class ExplanationGuard {
         return new GuardResult(reasons.isEmpty(), List.copyOf(reasons));
     }
 
+    /** What a number stands for, from the unit written after it or from the fact's name. Partial check of meaning (C47). */
+    enum Kind { MONEY, DAYS, UNITS, RATE, PERCENT, ANY }
+
+    private static final Pattern UNIT = Pattern.compile(
+        "^[ \u00A0]?(?:(դրամ)|(հատ/օր)|(հատ)(?!\\p{L})|(օր)(?!\\p{L})|(%))");
+
+    private static Kind unitAfter(String text, int end) {
+        Matcher u = UNIT.matcher(text.substring(end, Math.min(text.length(), end + 8)));
+        if (!u.find()) return null;
+        if (u.group(1) != null) return Kind.MONEY;
+        if (u.group(2) != null) return Kind.RATE;
+        if (u.group(3) != null) return Kind.UNITS;
+        if (u.group(4) != null) return Kind.DAYS;
+        return Kind.PERCENT;
+    }
+
+    static Kind kindOf(String factKey) {
+        String k = factKey.toLowerCase(Locale.ROOT);
+        if (k.endsWith("_percent")) return Kind.PERCENT;
+        if (k.contains("velocity")) return Kind.RATE;
+        if (k.contains("days")) return Kind.DAYS;
+        if (k.equals("on_hand") || k.equals("units") || k.endsWith("_units")) return Kind.UNITS;
+        if (k.contains("price") || k.contains("cost") || k.contains("value") || k.contains("spend") || k.contains("amount")) {
+            return Kind.MONEY;
+        }
+        return Kind.ANY;
+    }
+
+    private static Set<Kind> factKindsOf(BigDecimal v, Recommendation r) {
+        Set<Kind> out = new HashSet<>();
+        r.facts().forEach((key, fact) -> {
+            for (int scale = 0; scale <= 2; scale++) {
+                if (norm(fact.setScale(scale, RoundingMode.HALF_UP)).compareTo(v) == 0 || norm(fact).compareTo(v) == 0) {
+                    out.add(kindOf(key));
+                }
+            }
+        });
+        return out;
+    }
+
     private static List<String> find(Pattern p, String text) {
         List<String> out = new ArrayList<>();
         Matcher m = p.matcher(text);
@@ -120,8 +165,11 @@ public class ExplanationGuard {
     /** SKU code/name and the period dates may contain digits that are not claims. */
     private static String stripAllowedLiterals(String text, Recommendation r) {
         String s = text;
-        if (r.skuCode() != null && !r.skuCode().isBlank()) s = s.replace(r.skuCode(), " ");
-        if (r.skuName() != null && !r.skuName().isBlank()) s = s.replace(r.skuName(), " ");
+        // whole tokens only (C79): a numeric code like "999" must not erase digits inside "999999"
+        for (String literal : new String[]{r.skuName(), r.skuCode()}) {
+            if (literal == null || literal.isBlank()) continue;
+            s = s.replaceAll("(?<![\\p{L}\\p{N}])" + Pattern.quote(literal) + "(?![\\p{L}\\p{N}])", " ");
+        }
         for (LocalDate d : new LocalDate[]{r.from(), r.to(), r.dataAsOf()}) {
             if (d == null) continue;
             s = s.replace(d.format(DateTimeFormatter.ofPattern("dd.MM.yyyy")), " ").replace(d.toString(), " ");

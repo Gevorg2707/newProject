@@ -189,6 +189,20 @@ class ImportIntegrityIT {
     }
 
     @Test
+    void metaRowCoveringSeveralDays_isRejected_notBookedOnItsFirstDay() {
+        // C66: an export without the Day breakdown has one row per campaign for the whole range
+        var s = new MappingSettings(null, "AMD", "yyyy-MM-dd", ".", List.of("Start", "Campaign"), "meta", null, "Asia/Yerevan", null, null);
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.META_ADS, TargetEntity.CAMPAIGN_DAILY, "meta",
+            Map.of("date", "Start", "date_end", "End", "campaign_name", "Campaign", "spend", "Spend"), s));
+
+        CommitReport r = load(m, "m.csv", "Start,End,Campaign,Spend\n2026-09-01,2026-09-30,Shirts,30000\n2026-09-02,2026-09-02,Jeans,500\n");
+
+        assertThat(r.rowsRejected()).isEqualTo(1);
+        assertThat(r.issues()).extracting(am.retailai.commit.ValidationIssue::code).contains("multi_day_row");
+        assertThat(sql("SELECT sum(spend)::int::text FROM campaign_daily")).isEqualTo("500");
+    }
+
+    @Test
     void negativeStockBalance_isCommittedWithAWarning() {
         // C28: a posting error in the source, visible to the operator
         var settings = new MappingSettings(null, "AMD", "dd.MM.yyyy", ".", List.of("SKU", "Store"), null, null, "Asia/Yerevan", null, "2026-09-30");

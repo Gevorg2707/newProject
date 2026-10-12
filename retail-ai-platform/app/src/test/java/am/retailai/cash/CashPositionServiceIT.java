@@ -19,11 +19,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Founder rule: a bank balance is shown only with its source and date; an old one is a "last known balance". */
 @SpringBootTest
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(am.retailai.support.MutableClock.Config.class)
 class CashPositionServiceIT {
 
     @Autowired CashPositionService cash;
     @Autowired TenantTransactions tenantTx;
     @Autowired JdbcClient jdbc;
+    @Autowired am.retailai.support.MutableClock clock;
 
     TenantId tenant;
     UUID batch;
@@ -31,6 +33,7 @@ class CashPositionServiceIT {
 
     @BeforeEach
     void setUp() {
+        clock.setDate(LocalDate.of(2026, 10, 12));
         tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('Cash Shop') RETURNING id").query(UUID.class).single());
         batch = tenantTx.inTenant(tenant, j -> j.sql("""
                 INSERT INTO import_batches (tenant_id, source_system, file_name, file_sha256, file_size_bytes, uploaded_by)
@@ -102,6 +105,16 @@ class CashPositionServiceIT {
         CashPosition differ = cash.asOf(tenant, to);
         assertThat(differ.totalsByCurrency()).isEmpty();
         assertThat(differ.datesDiffer()).isTrue();
+    }
+
+    @Test
+    void periodNotEndedYet_yesterdaysBalanceIsNotStale() {
+        // C88: staleness was measured from the period end even when it lies in the future
+        bank("Ameria main", "T1", "2026-10-11", "1000", "1000");
+
+        AccountBalance a = cash.asOf(tenant, LocalDate.of(2026, 10, 31)).accounts().getFirst();
+
+        assertThat(a.stale()).isFalse();
     }
 
     @Test

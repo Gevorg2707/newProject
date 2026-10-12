@@ -308,6 +308,12 @@ public class CommitService {
             r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "platform",
                 "Platform (meta/tiktok) must be set in mapping settings"));
         }
+        LocalDate end = r.date("date_end", false).orElse(null);
+        if (date != null && end != null && !end.equals(date)) {
+            // one row for several days cannot be booked on one day, and splitting it evenly would be a guess (C66)
+            r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "multi_day_row", "date_end",
+                "Row covers " + date + " – " + end + ". Export with Breakdown → By time → Day, one row per day"));
+        }
         if (r.hasErrors()) return Write.UNCHANGED;
 
         String campaignId = r.text("campaign_id") != null ? r.text("campaign_id") : name;

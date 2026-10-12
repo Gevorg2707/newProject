@@ -128,6 +128,25 @@ class ExplanationGuardTest {
     }
 
     @Test
+    void aNumericSkuCode_isRemovedOnlyAsAWholeToken_notInsideOtherNumbers() {
+        // C79: code "999" erased "999999" entirely, so an invented number passed
+        var r = new Recommendation(RecommendationType.RESTOCK, "999", "Գուլպա", 1, Confidence.MEDIUM,
+            Recommendation.Status.PUBLISHABLE, new LinkedHashMap<>(), List.of(), List.of(), Set.of(), "warehouse",
+            LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), LocalDate.of(2026, 9, 30), false);
+        assertThat(guard.check("Ապրանք 999․ վաճառքը կլինի 999999 դրամ։", r).passed()).isFalse();
+        assertThat(guard.check("Ապրանք 999 (Գուլպա)։", r).passed()).isTrue();
+    }
+
+    @Test
+    void aFactNumberWithTheWrongUnit_isRejected() {
+        // C47 (partly): 10 days of stock may not be presented as 10 dram
+        var r = rec(false, "days_of_stock", "10.0", "max_acquisition_cost", "11000");
+        assertThat(guard.check("Պաշարը կբավարարի 10 օր, սահմանը՝ 11 000 դրամ։", r).passed()).isTrue();
+        assertThat(guard.check("Սահմանը՝ 10 դրամ։", r).passed()).isFalse();
+        assertThat(guard.check("Պաշարը կբավարարի 11 000 օր։", r).passed()).isFalse();
+    }
+
+    @Test
     void emptyText_isRejected() {
         assertThat(guard.check("  ", rec(false)).passed()).isFalse();
     }

@@ -206,7 +206,9 @@ public class WeeklyReportService {
     private void qualitySheet(XSSFWorkbook wb, Styles st, KpiReport k, List<Map<String, Object>> issues) {
         Sheet s = wb.createSheet(ReportLabels.SHEET_QUALITY);
         int r = 0;
-        title(s, st, r++, "Տվյալների որակ. ներմուծման նշումներ (վերջին 30 օր)");
+        // the window is imports since 30 days before the period start, up to the day the report is made (C80)
+        title(s, st, r++, "Տվյալների որակ. ներմուծման նշումներ (ներմուծված " + k.from().minusDays(30).format(D)
+            + "-ից մինչև հաշվետվության օրը)");
         header(s, st, r++, "Աղբյուր", "Խստություն", "Կոդ", "Բացատրություն", "Դաշտ", "Քանակ", "Օրինակ");
         for (Map<String, Object> i : issues) {
             Row row = s.createRow(r++);
@@ -219,7 +221,7 @@ public class WeeklyReportService {
             cell(row, 6, (String) i.get("example"), st.text);
         }
         if (issues.isEmpty()) {
-            text(s, st, r++, "—", "Վերջին 30 օրվա ներմուծումներում նշումներ չկան");
+            text(s, st, r++, "—", "Այս ժամանակահատվածի ներմուծումներում նշումներ չկան");
         }
         widths(s, 16, 26, 22, 60, 16, 9, 70);
     }
