@@ -21,11 +21,13 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(am.retailai.support.MutableClock.Config.class)
 class RecommendationServiceIT {
 
     @Autowired RecommendationService service;
     @Autowired TenantTransactions tenantTx;
     @Autowired JdbcClient jdbc;
+    @Autowired am.retailai.support.MutableClock clock;
 
     TenantId tenant;
     UUID batch;
@@ -35,6 +37,7 @@ class RecommendationServiceIT {
 
     @BeforeEach
     void setUp() {
+        clock.setDate(LocalDate.of(2026, 10, 1));   // data runs to 2026-09-30: fresh
         tenant = newTenant("Advice Shop");
         batch = tenantTx.inTenant(tenant, j -> j.sql("""
                 INSERT INTO import_batches (tenant_id, source_system, file_name, file_sha256, file_size_bytes, uploaded_by)
@@ -101,8 +104,9 @@ class RecommendationServiceIT {
     }
 
     @Test
-    void staleImports_makeRecommendationsNeedData() {
-        tenantTx.inTenant(tenant, j -> j.sql("UPDATE import_batches SET ingested_at = now() - interval '40 days'").update());
+    void oldData_makesRecommendationsNeedData_evenWhenTheFileWasUploadedToday() {
+        // C10: freshness is the date of the data (last sale, stock snapshot), not the upload time
+        clock.setDate(LocalDate.of(2026, 11, 15));
 
         List<StoredRecommendation> recs = service.generate(tenant, from, to, settings);
 
@@ -110,8 +114,18 @@ class RecommendationServiceIT {
             .isNotEmpty()
             .allSatisfy(s -> {
                 assertThat(s.recommendation().status()).isEqualTo(Recommendation.Status.NEEDS_DATA);
+                assertThat(s.recommendation().dataAsOf()).isEqualTo(LocalDate.of(2026, 9, 30));
                 assertThat(s.explanation().textHy()).contains("ցածր");
             });
+    }
+
+    @Test
+    void stockSnapshotOlderThanTheSales_setsTheDataDate() {
+        tenantTx.inTenant(tenant, j -> j.sql("UPDATE inventory_snapshots SET as_of_date = '2026-09-20'").update());
+
+        List<StoredRecommendation> recs = service.generate(tenant, from, to, settings);
+
+        assertThat(recs).allSatisfy(s -> assertThat(s.recommendation().dataAsOf()).isEqualTo(LocalDate.of(2026, 9, 20)));
     }
 
     private TenantId newTenant(String name) {

@@ -49,7 +49,7 @@ public class RecommendationEngine {
                 facts.put("on_hand", x.onHand());
                 facts.put("daily_velocity", x.dailyVelocity());
                 if (x.daysOfStock() != null) facts.put("days_of_stock", x.daysOfStock());
-                if (x.cogs() != null && netUnits.signum() > 0 && x.onHand() != null) {
+                if (x.cogs() != null && !x.flags().contains(KpiFlags.COGS_MISSING) && netUnits.signum() > 0 && x.onHand() != null) {
                     BigDecimal unitCost = x.cogs().divide(netUnits, 10, RoundingMode.HALF_UP);
                     facts.put("stock_value_at_cost", unitCost.multiply(x.onHand()).setScale(2, RoundingMode.HALF_UP));
                 }
@@ -57,7 +57,9 @@ public class RecommendationEngine {
                     "owner", k, dataAsOf, stale, false));
             }
 
-            if (x.cogs() != null && netUnits.signum() > 0 && x.onHand() != null && x.onHand().signum() > 0) {
+            // Unit cost must cover every unit: with partial COGS it is understated and the acquisition limit too high.
+            if (x.cogs() != null && !x.flags().contains(KpiFlags.COGS_MISSING) && netUnits.signum() > 0
+                && x.onHand() != null && x.onHand().signum() > 0) {
                 BigDecimal netPrice = x.netSales().divide(netUnits, 2, RoundingMode.HALF_UP);
                 BigDecimal cogsUnit = x.cogs().divide(netUnits, 2, RoundingMode.HALF_UP);
                 BigDecimal margin = netPrice.subtract(cogsUnit).subtract(costs.variableCostPerOrder());
@@ -99,12 +101,31 @@ public class RecommendationEngine {
         List<String> miss = new ArrayList<>(missing);
 
         if (flags.contains(KpiFlags.LOW_VELOCITY_SAMPLE)) c = Confidence.MEDIUM;
+        if (flags.contains(KpiFlags.COGS_MISSING)) {
+            if (c == Confidence.HIGH) c = Confidence.MEDIUM;
+            miss.add("cogs");
+        }
+        if (flags.contains(KpiFlags.NEGATIVE_STOCK)) {
+            c = Confidence.LOW;
+            status = Recommendation.Status.NEEDS_DATA;
+            miss.add("inventory_check");
+        }
+        if (flags.contains(KpiFlags.INVENTORY_STALE)) {
+            c = Confidence.LOW;
+            status = Recommendation.Status.NEEDS_DATA;
+            miss.add("fresh_inventory");
+        }
         if (type == RecommendationType.AD_TEST) {
             if (k.flags().contains(KpiFlags.FORMULAS_NOT_CONFIRMED) && c == Confidence.HIGH) c = Confidence.MEDIUM;
             if (k.flags().contains(KpiFlags.VAT_UNKNOWN)) {
                 c = Confidence.LOW;
                 status = Recommendation.Status.NEEDS_DATA;
                 miss.add("vat_basis");
+            }
+            if (k.flags().contains(KpiFlags.MIXED_CURRENCY)) {
+                c = Confidence.LOW;
+                status = Recommendation.Status.NEEDS_DATA;
+                miss.add("single_currency");
             }
         }
         if (stale) {

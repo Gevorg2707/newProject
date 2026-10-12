@@ -209,6 +209,9 @@ public class CommitService {
                 "Snapshot date is neither in the file nor in mapping settings"));
         }
         if (cost == null) r.warn("no_cost", "cost_per_unit", "No unit cost; stock value unavailable");
+        if (qty != null && qty.signum() < 0) {
+            r.warn("negative_stock", "quantity", "Negative balance in the source (posting error); KPIs count it as 0 and flag it");
+        }
         if (r.hasErrors()) return Write.UNCHANGED;
 
         UUID productId = productFor(jdbc, tenant, source, sku, r.text("sku_name"), r.text("unit"), productCache, r);

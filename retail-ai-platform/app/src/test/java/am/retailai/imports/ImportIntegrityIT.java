@@ -158,6 +158,18 @@ class ImportIntegrityIT {
     }
 
     @Test
+    void negativeStockBalance_isCommittedWithAWarning() {
+        // C28: a posting error in the source, visible to the operator
+        var settings = new MappingSettings(null, "AMD", "dd.MM.yyyy", ".", List.of("SKU", "Store"), null, null, "Asia/Yerevan", null, "2026-09-30");
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.INVENTORY_SNAPSHOT, "stock",
+            Map.of("sku_code", "SKU", "warehouse", "Store", "quantity", "Qty"), settings));
+
+        CommitReport r = load(m, "s.csv", "SKU,Store,Qty\nA,Main,-4\n");
+
+        assertThat(r.issues()).extracting(am.retailai.commit.ValidationIssue::code).contains("negative_stock");
+    }
+
+    @Test
     void adSetRowsOfTheSameCampaignAndDay_areKeptSeparately() {
         var s = new MappingSettings(null, "AMD", "yyyy-MM-dd", ".", List.of("Day", "Campaign", "Ad set"), "meta", null, "Asia/Yerevan", null, null);
         ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.META_ADS, TargetEntity.CAMPAIGN_DAILY, "meta",

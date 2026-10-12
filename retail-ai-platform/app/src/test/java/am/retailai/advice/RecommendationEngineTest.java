@@ -110,6 +110,45 @@ class RecommendationEngineTest {
         assertThat(recs).allMatch(r -> r.type() == RecommendationType.ASK_ACCOUNTANT);
     }
 
+    @Test
+    void partialCogs_neverYieldsAnAdTest_andCapsOtherAdviceAtMedium() {
+        // C8: cost known for only part of the units understates unit cost
+        var sku = sku("B-1", "10", "0", "350000", "110000", "300", "0.333", "900.0", true, Set.of(KpiFlags.COGS_MISSING));
+        var recs = engine.recommend(report(List.of(sku), Set.of(KpiFlags.COGS_MISSING)), costs2000, to, to, RecommendationSettings.defaults());
+
+        assertThat(recs).noneMatch(r -> r.type() == RecommendationType.AD_TEST);
+        Recommendation slow = find(recs, RecommendationType.SLOW_MOVER);
+        assertThat(slow.confidence()).isNotEqualTo(Confidence.HIGH);
+        assertThat(slow.missing()).contains("cogs");
+        assertThat(slow.facts()).doesNotContainKey("stock_value_at_cost");
+    }
+
+    @Test
+    void negativeOrStaleStock_makesStockAdviceNeedData() {
+        // C28, C26
+        var negative = sku("A-1", "60", "0", "2100000", "1320000", "10", "2.000", "5.0", false, Set.of(KpiFlags.NEGATIVE_STOCK));
+        var stale = sku("A-2", "60", "0", "2100000", "1320000", "10", "2.000", "5.0", false, Set.of(KpiFlags.INVENTORY_STALE));
+        var recs = engine.recommend(report(List.of(negative, stale), Set.of()), costs2000, to, to, RecommendationSettings.defaults());
+
+        assertThat(recs).filteredOn(r -> r.type() == RecommendationType.RESTOCK).hasSize(2).allSatisfy(r -> {
+            assertThat(r.status()).isEqualTo(Recommendation.Status.NEEDS_DATA);
+            assertThat(r.confidence()).isEqualTo(Confidence.LOW);
+        });
+        assertThat(recs).filteredOn(r -> "A-1".equals(r.skuCode())).allSatisfy(r -> assertThat(r.missing()).contains("inventory_check"));
+        assertThat(recs).filteredOn(r -> "A-2".equals(r.skuCode())).allSatisfy(r -> assertThat(r.missing()).contains("fresh_inventory"));
+    }
+
+    @Test
+    void mixedCurrency_makesTheAdTestNeedData() {
+        // C27
+        var sku = sku("B-1", "10", "0", "350000", "220000", "126", "0.333", "378.4", true, Set.of());
+        var recs = engine.recommend(report(List.of(sku), Set.of(KpiFlags.MIXED_CURRENCY)), costs2000, to, to, RecommendationSettings.defaults());
+
+        Recommendation r = find(recs, RecommendationType.AD_TEST);
+        assertThat(r.status()).isEqualTo(Recommendation.Status.NEEDS_DATA);
+        assertThat(r.missing()).contains("single_currency");
+    }
+
     // ---- builders ----
     private SkuKpi sku(String code, String sold, String returned, String net, String cogs, String onHand, String velocity,
                        String days, boolean slow, Set<KpiFlags> flags) {
@@ -123,7 +162,7 @@ class RecommendationEngineTest {
     private KpiReport report(List<SkuKpi> skus, Set<KpiFlags> flags) {
         return new KpiReport(KpiReport.FORMULA_VERSION, from, to, "AMD", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
             BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ONE, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
-            0, 0, 30, skus, flags.isEmpty() ? Set.of() : EnumSet.copyOf(flags));
+            0, 0, 30, skus, flags.isEmpty() ? Set.of() : EnumSet.copyOf(flags), null);
     }
 
     private static Recommendation find(List<Recommendation> recs, RecommendationType type) {

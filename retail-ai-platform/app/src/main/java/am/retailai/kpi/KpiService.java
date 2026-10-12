@@ -36,6 +36,20 @@ public class KpiService {
             Set<KpiFlags> flags = EnumSet.noneOf(KpiFlags.class);
             if (!settings.formulasConfirmed()) flags.add(KpiFlags.FORMULAS_NOT_CONFIRMED);
 
+            var periodFrom = from.atStartOfDay(java.time.ZoneId.of("Asia/Yerevan")).toOffsetDateTime();
+            var periodTo = to.plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Yerevan")).toOffsetDateTime();
+            // Multi-currency is a later phase: totals are in the currency of most sale lines, other currencies are left out.
+            String currency = jdbc.sql("""
+                    SELECT currency FROM sale_lines WHERE occurred_at >= :from AND occurred_at < :to
+                    GROUP BY currency ORDER BY count(*) DESC, currency LIMIT 1
+                    """).param("from", periodFrom).param("to", periodTo).query(String.class).optional().orElse("AMD");
+            boolean otherCurrency = jdbc.sql("""
+                    SELECT EXISTS (SELECT 1 FROM sale_lines WHERE occurred_at >= :from AND occurred_at < :to AND currency <> :cur)
+                        OR EXISTS (SELECT 1 FROM campaign_daily WHERE date BETWEEN :d1 AND :d2 AND currency <> :cur)
+                    """).param("from", periodFrom).param("to", periodTo).param("d1", from).param("d2", to).param("cur", currency)
+                .query(Boolean.class).single();
+            if (otherCurrency) flags.add(KpiFlags.MIXED_CURRENCY);
+
             // One row per (sku, operation, vat_included, has_cogs) keeps the VAT conversion exact per group.
             List<Map<String, Object>> groups = jdbc.sql("""
                     SELECT sl.sku_code, max(p.name) AS name, sl.operation_type, sl.vat_included,
@@ -44,14 +58,13 @@ public class KpiService {
                            sum(sl.quantity) AS qty,
                            sum(sl.gross_amount) AS gross,
                            sum(sl.discount_amount) AS discount,
-                           sum(coalesce(sl.cogs_amount, 0)) AS cogs,
-                           max(sl.currency) AS currency
+                           sum(coalesce(sl.cogs_amount, 0)) AS cogs
                     FROM sale_lines sl JOIN products p ON p.id = sl.product_id
-                    WHERE sl.occurred_at >= :from AND sl.occurred_at < :to
+                    WHERE sl.occurred_at >= :from AND sl.occurred_at < :to AND sl.currency = :cur
                     GROUP BY sl.sku_code, sl.operation_type, sl.vat_included, (sl.cogs_amount IS NOT NULL)
+                    ORDER BY sl.sku_code
                     """)
-                .param("from", from.atStartOfDay(java.time.ZoneId.of("Asia/Yerevan")).toOffsetDateTime())
-                .param("to", to.plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Yerevan")).toOffsetDateTime())
+                .param("from", periodFrom).param("to", periodTo).param("cur", currency)
                 .query().listOfRows();
 
             int daysWithSales = jdbc.sql("""
@@ -62,18 +75,32 @@ public class KpiService {
                 .param("to", to.plusDays(1).atStartOfDay(java.time.ZoneId.of("Asia/Yerevan")).toOffsetDateTime())
                 .query(Integer.class).single();
 
-            Map<String, BigDecimal[]> onHand = new LinkedHashMap<>(); // sku -> {qty}
+            // Each warehouse's latest snapshot is its whole stock: a SKU missing from it has 0 there (exports list only
+            // non-zero balances). A negative balance is a posting error: counted as 0 and flagged, never netted.
+            Map<String, StockRow> onHand = new LinkedHashMap<>();
+            LocalDate staleBefore = to.minusDays(7);
             jdbc.sql("""
-                    SELECT DISTINCT ON (sku_code, warehouse) sku_code, warehouse, quantity
-                    FROM inventory_snapshots WHERE as_of_date <= :to
-                    ORDER BY sku_code, warehouse, as_of_date DESC
+                    WITH latest AS (
+                        SELECT warehouse, max(as_of_date) AS d FROM inventory_snapshots WHERE as_of_date <= :to GROUP BY warehouse)
+                    SELECT i.sku_code, max(p.name) AS name, sum(greatest(i.quantity, 0)) AS qty,
+                           bool_or(i.quantity < 0) AS negative, min(l.d) AS as_of
+                    FROM inventory_snapshots i
+                    JOIN latest l ON l.warehouse = i.warehouse AND i.as_of_date = l.d
+                    LEFT JOIN products p ON p.id = i.product_id
+                    GROUP BY i.sku_code ORDER BY i.sku_code
                     """).param("to", to).query().listOfRows()
-                .forEach(r -> onHand.merge((String) r.get("sku_code"), new BigDecimal[]{(BigDecimal) r.get("quantity")},
-                    (a, b) -> new BigDecimal[]{a[0].add(b[0])}));
-            if (onHand.isEmpty()) flags.add(KpiFlags.NO_INVENTORY_SNAPSHOT);
+                .forEach(r -> onHand.put((String) r.get("sku_code"), new StockRow((String) r.get("name"), (BigDecimal) r.get("qty"),
+                    (Boolean) r.get("negative"), ((java.sql.Date) r.get("as_of")).toLocalDate())));
+            LocalDate inventoryAsOf = jdbc.sql("""
+                    SELECT min(d) FROM (SELECT max(as_of_date) AS d FROM inventory_snapshots WHERE as_of_date <= :to GROUP BY warehouse) w
+                    """).param("to", to).query(LocalDate.class).optional().orElse(null);
+            boolean anySnapshot = inventoryAsOf != null;
+            if (!anySnapshot) flags.add(KpiFlags.NO_INVENTORY_SNAPSHOT);
+            if (anySnapshot && inventoryAsOf.isBefore(staleBefore)) flags.add(KpiFlags.INVENTORY_STALE);
+            if (onHand.values().stream().anyMatch(StockRow::negative)) flags.add(KpiFlags.NEGATIVE_STOCK);
 
-            BigDecimal spend = jdbc.sql("SELECT coalesce(sum(spend), 0) FROM campaign_daily WHERE date BETWEEN :from AND :to")
-                .param("from", from).param("to", to).query(BigDecimal.class).single();
+            BigDecimal spend = jdbc.sql("SELECT coalesce(sum(spend), 0) FROM campaign_daily WHERE date BETWEEN :from AND :to AND currency = :cur")
+                .param("from", from).param("to", to).param("cur", currency).query(BigDecimal.class).single();
             boolean anyMarketing = jdbc.sql("SELECT count(*) FROM campaign_daily WHERE date BETWEEN :from AND :to")
                 .param("from", from).param("to", to).query(Integer.class).single() > 0;
             if (!anyMarketing) flags.add(KpiFlags.NO_MARKETING_DATA);
@@ -87,7 +114,6 @@ public class KpiService {
             Map<String, SkuAcc> perSku = new LinkedHashMap<>();
             BigDecimal grossSales = BigDecimal.ZERO, discounts = BigDecimal.ZERO, returns = BigDecimal.ZERO;
             int saleLines = 0, returnLines = 0;
-            String currency = "AMD";
             BigDecimal vatDivisor = BigDecimal.ONE.add(settings.vatRate());
 
             for (Map<String, Object> g : groups) {
@@ -101,7 +127,6 @@ public class KpiService {
                 BigDecimal discount = (BigDecimal) g.get("discount");
                 BigDecimal cogs = (BigDecimal) g.get("cogs");
                 int lines = ((Number) g.get("lines")).intValue();
-                currency = (String) g.get("currency");
 
                 BigDecimal netGroup = gross.subtract(discount);
                 if (vatIncluded == null) {
@@ -134,6 +159,9 @@ public class KpiService {
             long periodDays = Math.max(1, ChronoUnit.DAYS.between(from, to) + 1);
             if (daysWithSales < 14) flags.add(KpiFlags.LOW_VELOCITY_SAMPLE);
 
+            // Stock without any sale in the period is the worst slow mover: it must be listed too.
+            onHand.forEach((sku, st) -> perSku.computeIfAbsent(sku, k -> new SkuAcc(k, st.name())));
+
             BigDecimal netSales = BigDecimal.ZERO, cogsTotal = BigDecimal.ZERO, netWithCogs = BigDecimal.ZERO;
             List<SkuKpi> skus = new ArrayList<>();
             for (SkuAcc a : perSku.values()) {
@@ -144,7 +172,10 @@ public class KpiService {
 
                 BigDecimal netUnits = a.unitsSold.subtract(a.unitsReturned);
                 BigDecimal velocity = netUnits.divide(BigDecimal.valueOf(periodDays), CALC_SCALE, RoundingMode.HALF_UP);
-                BigDecimal stock = onHand.containsKey(a.sku) ? onHand.get(a.sku)[0] : null;
+                StockRow stockRow = onHand.get(a.sku);
+                BigDecimal stock = stockRow != null ? stockRow.qty() : anySnapshot ? BigDecimal.ZERO : null;
+                if (stockRow != null && stockRow.negative()) a.flags.add(KpiFlags.NEGATIVE_STOCK);
+                if (stockRow != null && stockRow.asOf().isBefore(staleBefore)) a.flags.add(KpiFlags.INVENTORY_STALE);
                 BigDecimal daysOfStock = null;
                 boolean slow = false;
                 if (stock == null) {
@@ -170,12 +201,16 @@ public class KpiService {
 
             return new KpiReport(KpiReport.FORMULA_VERSION, from, to, currency,
                 r2(grossSales), r2(discounts), r2(returns), r2(netSales), r2(cogsTotal), r2(grossProfit), coverage,
-                r2(spend), r2(variableCosts), r2(contribution), saleLines, returnLines, daysWithSales, skus, Set.copyOf(flags));
+                r2(spend), r2(variableCosts), r2(contribution), saleLines, returnLines, daysWithSales, skus, Set.copyOf(flags),
+                inventoryAsOf);
         });
     }
 
     private static BigDecimal r2(BigDecimal v) {
         return v == null ? null : v.setScale(SCALE, RoundingMode.HALF_UP);
+    }
+
+    private record StockRow(String name, BigDecimal qty, boolean negative, LocalDate asOf) {
     }
 
     private static final class SkuAcc {

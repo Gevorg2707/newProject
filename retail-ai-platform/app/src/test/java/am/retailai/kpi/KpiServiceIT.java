@@ -173,6 +173,79 @@ class KpiServiceIT {
         assertThat(r.skus()).isEmpty();
     }
 
+    @Test
+    void stockWithoutAnySaleInThePeriod_isASlowMover() {
+        // C9: dead stock used to be invisible because SKUs came only from sale lines
+        UUID p = product("D-9", "Coat");
+        snapshot(p, "D-9", "Main", "2026-09-30", "30");
+
+        SkuKpi dead = kpi.compute(tenant, from, to, KpiSettings.defaults()).skus().stream()
+            .filter(x -> x.skuCode().equals("D-9")).findFirst().orElseThrow();
+
+        assertThat(dead.unitsSold()).isEqualByComparingTo("0");
+        assertThat(dead.onHand()).isEqualByComparingTo("30");
+        assertThat(dead.slowMover()).isTrue();
+        assertThat(dead.name()).isEqualTo("Coat");
+    }
+
+    @Test
+    void skuMissingFromTheWarehousesLatestSnapshot_hasZeroStock_andAnOldSnapshotIsFlagged() {
+        // C26: exports list only non-zero balances; an older row must not survive a newer snapshot
+        UUID a = product("A-1045", "Shirt");
+        UUID b = product("B-2001", "Jeans");
+        for (int d = 1; d <= 30; d++) sale("Հ-" + d, "2026-09-%02d".formatted(d), "SALE", a, "A-1045", "1", "36000", "0", "22000", false);
+        snapshot(a, "A-1045", "Main", "2026-09-01", "10");
+        snapshot(b, "B-2001", "Main", "2026-09-28", "5");
+        snapshot(b, "B-2001", "Old", "2026-08-01", "7");
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+        SkuKpi shirt = r.skus().stream().filter(x -> x.skuCode().equals("A-1045")).findFirst().orElseThrow();
+        SkuKpi jeans = r.skus().stream().filter(x -> x.skuCode().equals("B-2001")).findFirst().orElseThrow();
+
+        assertThat(shirt.onHand()).isEqualByComparingTo("0");
+        assertThat(shirt.flags()).doesNotContain(KpiFlags.NO_INVENTORY_SNAPSHOT);
+        assertThat(jeans.onHand()).isEqualByComparingTo("12");
+        assertThat(jeans.flags()).contains(KpiFlags.INVENTORY_STALE);
+        assertThat(r.flags()).contains(KpiFlags.INVENTORY_STALE);
+        assertThat(r.inventoryAsOf()).isEqualTo(LocalDate.of(2026, 8, 1));
+    }
+
+    @Test
+    void negativeStock_isFlagged_andDoesNotCancelStockInAnotherWarehouse() {
+        // C28
+        UUID p = product("A-1045", "Shirt");
+        snapshot(p, "A-1045", "Main", "2026-09-30", "10");
+        snapshot(p, "A-1045", "Shop", "2026-09-30", "-4");
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(r.skus().getFirst().onHand()).isEqualByComparingTo("10");
+        assertThat(r.skus().getFirst().flags()).contains(KpiFlags.NEGATIVE_STOCK);
+        assertThat(r.flags()).contains(KpiFlags.NEGATIVE_STOCK);
+    }
+
+    @Test
+    void linesAndAdSpendInAnotherCurrency_areLeftOut_andFlagged() {
+        // C27: never add USD to AMD
+        UUID p = product("A-1045", "Shirt");
+        sale("Հ-1", "2026-09-10", "SALE", p, "A-1045", "1", "36000", "0", "22000", false);
+        sale("Հ-2", "2026-09-11", "SALE", p, "A-1045", "2", "72000", "0", "44000", false);
+        tenantTx.inTenant(tenant, j -> {
+            j.sql("UPDATE sale_lines SET currency = 'USD', gross_amount = 100 WHERE document_number = 'Հ-1'").update();
+            return j.sql("""
+                INSERT INTO campaign_daily (tenant_id, import_batch_id, platform, date, campaign_id, campaign_name, spend, currency)
+                VALUES (:t, :b, 'meta', '2026-09-10', 'c1', 'Shirts', 50, 'USD'), (:t, :b, 'meta', '2026-09-10', 'c2', 'Jeans', 4000, 'AMD')
+                """).param("t", tenant.value()).param("b", batch).update();
+        });
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(r.currency()).isEqualTo("AMD");
+        assertThat(r.netSales()).isEqualByComparingTo("72000.00");
+        assertThat(r.marketingSpend()).isEqualByComparingTo("4000.00");
+        assertThat(r.flags()).contains(KpiFlags.MIXED_CURRENCY);
+    }
+
     // ---- helpers ----
     private UUID product(String sku, String name) {
         return tenantTx.inTenant(tenant, j -> j.sql("INSERT INTO products (tenant_id, sku_code, name) VALUES (:t, :s, :n) RETURNING id")

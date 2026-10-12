@@ -30,7 +30,8 @@ public record KpiReport(
     int returnLines,
     int daysWithSales,
     List<SkuKpi> skus,
-    Set<KpiFlags> flags
+    Set<KpiFlags> flags,
+    LocalDate inventoryAsOf        // oldest of the warehouses' latest snapshot dates; null when no snapshot
 ) {
     public static final String FORMULA_VERSION = "formula_v0";
 }

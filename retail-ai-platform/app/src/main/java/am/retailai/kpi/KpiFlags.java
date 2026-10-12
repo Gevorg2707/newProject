@@ -9,5 +9,8 @@ public enum KpiFlags {
     LOW_VELOCITY_SAMPLE,      // fewer than 14 days of sales history in the period
     NO_MARKETING_DATA,        // contribution computed without ad spend
     VARIABLE_COSTS_ASSUMED,   // per-order costs (delivery, acquiring, returns) are 0 or an assumption, not fact
-    ADS_NOT_FINAL             // ad spend for days within the last 28 days may still be restated by the platform
+    ADS_NOT_FINAL,            // ad spend for days within the last 28 days may still be restated by the platform
+    INVENTORY_STALE,          // the latest stock snapshot of a warehouse is more than 7 days older than the period end
+    NEGATIVE_STOCK,           // a warehouse reports a negative balance (posting error); it is counted as 0, not netted
+    MIXED_CURRENCY            // lines or ad spend in another currency were left out of the totals
 }

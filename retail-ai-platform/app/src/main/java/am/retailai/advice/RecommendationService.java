@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
 
 import java.sql.SQLException;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -30,23 +31,29 @@ public class RecommendationService {
     private final GuardedExplainer explainer;
     private final TenantTransactions tenantTx;
     private final ObjectMapper json;
+    private final Clock clock;
 
     public RecommendationService(KpiService kpi, RecommendationEngine engine, GuardedExplainer explainer,
-                                 TenantTransactions tenantTx, ObjectMapper json) {
+                                 TenantTransactions tenantTx, ObjectMapper json, Clock clock) {
         this.kpi = kpi;
         this.engine = engine;
         this.explainer = explainer;
         this.tenantTx = tenantTx;
         this.json = json;
+        this.clock = clock;
     }
 
     public List<StoredRecommendation> generate(TenantId tenant, LocalDate from, LocalDate to, KpiSettings settings) {
         KpiReport report = kpi.compute(tenant, from, to, settings);
-        LocalDate today = LocalDate.now(YEREVAN);
-        LocalDate dataAsOf = tenantTx.inTenant(tenant, j -> j.sql(
-                "SELECT (max(ingested_at) AT TIME ZONE 'Asia/Yerevan')::date FROM import_batches")
+        LocalDate today = LocalDate.now(clock);
+        // Freshness of the data itself, per source the advice uses: the last sale and the stock snapshot (the older wins).
+        // Upload time says nothing: re-saving an old export makes it "new".
+        LocalDate lastSale = tenantTx.inTenant(tenant, j -> j.sql("""
+                SELECT (max(occurred_at) AT TIME ZONE 'Asia/Yerevan')::date FROM sale_lines WHERE occurred_at < :to
+                """).param("to", to.plusDays(1).atStartOfDay(YEREVAN).toOffsetDateTime())
             .query(LocalDate.class).optional().orElse(null));
-        if (dataAsOf == null) dataAsOf = today.minusYears(1); // nothing imported → everything is stale
+        LocalDate dataAsOf = lastSale == null ? today.minusYears(1) : lastSale;   // no sales → everything is stale
+        if (report.inventoryAsOf() != null && report.inventoryAsOf().isBefore(dataAsOf)) dataAsOf = report.inventoryAsOf();
 
         List<Recommendation> recs = engine.recommend(report, settings, dataAsOf, today, RecommendationSettings.defaults());
         List<Explanation> explanations = recs.stream().map(explainer::explain).toList();

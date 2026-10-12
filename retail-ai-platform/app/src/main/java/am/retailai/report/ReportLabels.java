@@ -24,7 +24,10 @@ final class ReportLabels {
         Map.entry(KpiFlags.LOW_VELOCITY_SAMPLE, "Վաճառքի օրերը 14-ից պակաս են. արագության գնահատականը թույլ է"),
         Map.entry(KpiFlags.NO_MARKETING_DATA, "Գովազդի ծախս չի ներմուծվել. ծածկույթը հաշվված է առանց մարքեթինգի"),
         Map.entry(KpiFlags.VARIABLE_COSTS_ASSUMED, "Պատվերի փոփոխական ծախսերը (առաքում, միջնորդավճար, վերադարձ) ենթադրություն են, ոչ փաստ"),
-        Map.entry(KpiFlags.ADS_NOT_FINAL, "Վերջին 28 օրվա գովազդի ծախսը դեռ վերջնական չէ. հարթակը կարող է այն վերահաշվարկել")
+        Map.entry(KpiFlags.ADS_NOT_FINAL, "Վերջին 28 օրվա գովազդի ծախսը դեռ վերջնական չէ. հարթակը կարող է այն վերահաշվարկել"),
+        Map.entry(KpiFlags.INVENTORY_STALE, "Պահեստի մնացորդի վերջին տվյալը շրջանի ավարտից 7 օրից ավելի հին է"),
+        Map.entry(KpiFlags.NEGATIVE_STOCK, "Պահեստում բացասական մնացորդ կա (հաշվառման սխալ). հաշվվել է որպես 0"),
+        Map.entry(KpiFlags.MIXED_CURRENCY, "Այլ արժույթով տողերը կամ գովազդի ծախսը չեն ներառվել ընդհանուր գումարներում")
     );
 
     static final Map<String, String> ISSUE_CODES = Map.ofEntries(

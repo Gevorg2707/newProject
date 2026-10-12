@@ -176,7 +176,7 @@ public class WeeklyReportService {
     private void skuSheet(XSSFWorkbook wb, Styles st, KpiReport k) {
         Sheet s = wb.createSheet(ReportLabels.SHEET_SKU);
         header(s, st, 0, "Կոդ", "Անվանում", "Վաճառված", "Վերադարձված", "Մաքուր վաճառք", "COGS", "Համախառն շահույթ",
-            "Մնացորդ", "Արագություն (հատ/օր)", "Պաշարի օրեր", "Դանդաղ շրջանառություն", "Նշումներ");
+            k.inventoryAsOf() == null ? "Մնացորդ" : "Մնացորդ (" + k.inventoryAsOf().format(D) + ")", "Արագություն (հատ/օր)", "Պաշարի օրեր", "Դանդաղ շրջանառություն", "Նշումներ");
         int r = 1;
         List<SkuKpi> sorted = k.skus().stream()
             .sorted(Comparator.comparing((SkuKpi x) -> x.netSales() == null ? BigDecimal.ZERO : x.netSales()).reversed()).toList();
