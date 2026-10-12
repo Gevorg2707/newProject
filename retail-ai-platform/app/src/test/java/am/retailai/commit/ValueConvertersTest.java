@@ -66,6 +66,24 @@ class ValueConvertersTest {
     }
 
     @Test
+    void annotatedOrErrorValues_areUnreadable_notTurnedIntoOtherNumbers() {
+        // R39: only a currency sign or code may surround a number
+        for (String v : List.of("#DIV/0!", "15%", "1.5E+3", "3x250", "1,500.00 Dr", "N/A")) {
+            assertThat(ValueConverters.decimal(v, dot)).as(v).isEmpty();
+        }
+        assertThat(ValueConverters.decimal("֏ 35 000", dot)).contains(new BigDecimal("35000"));
+        assertThat(ValueConverters.decimal("35 000 դր.", dot)).contains(new BigDecimal("35000"));
+        assertThat(ValueConverters.decimal("USD 12.50", dot)).contains(new BigDecimal("12.50"));
+    }
+
+    @Test
+    void timeWithASingleDigitHour_isRead() {
+        // R66: '05.09.2026 9:07' is how hy/ru Excel shows a morning sale
+        assertThat(ValueConverters.dateTime("05.09.2026 9:07", dot).orElseThrow().toString()).startsWith("2026-09-05T09:07+04:00");
+        assertThat(ValueConverters.dateTime("05.09.2026 09:07:30", dot).orElseThrow().toString()).startsWith("2026-09-05T09:07:30+04:00");
+    }
+
+    @Test
     void dates_inMappingFormat_andIso_inYerevanTimezone() {
         var d = ValueConverters.dateTime("14.09.2026 15:32", dot).orElseThrow();
         assertThat(d.toString()).startsWith("2026-09-14T15:32+04:00");

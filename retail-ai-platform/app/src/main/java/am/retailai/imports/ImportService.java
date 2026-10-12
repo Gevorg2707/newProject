@@ -54,6 +54,12 @@ public class ImportService {
         try {
             rows = parser.parse(new ByteArrayInputStream(content));
         } catch (IOException e) {
+            // the refusal itself is a fact worth keeping: the client sent a file and it was not imported (R74)
+            tenantTx.inTenant(tenant, jdbc -> jdbc.sql("""
+                    INSERT INTO audit_events (tenant_id, actor, action, entity_type, entity_id, details)
+                    VALUES (:t, :by, 'import.refused', 'file', :sha, jsonb_build_object('file', :file, 'reason', :reason))
+                    """).param("t", tenant.value()).param("by", uploadedBy).param("sha", sha).param("file", fileName)
+                .param("reason", String.valueOf(e.getMessage())).update());
             throw new UncheckedIOException("Cannot parse " + fileName + ": " + e.getMessage(), e);
         }
 

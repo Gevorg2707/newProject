@@ -110,6 +110,58 @@ class MoneySignsIT {
         assertThat(sql("SELECT string_agg(amount::int::text, ' ' ORDER BY txn_id) FROM bank_transactions")).isEqualTo("-42000 1500");
     }
 
+    @Test
+    void placeholderInAnOptionalColumn_isEmpty_notARejectedRow() {
+        // R32
+        CommitReport r = sales("gross_amount", "S-1,02.09.2026,SALE,A,2,70000,-,n/a\n");
+
+        assertThat(r.rowsRejected()).isZero();
+        assertThat(codes(r)).contains("placeholder_empty");
+        assertThat(sql("SELECT (discount_amount = 0 AND cogs_amount IS NULL)::text FROM sale_lines")).isEqualTo("true");
+    }
+
+    @Test
+    void currencySignsAreNormalised_andAnUnknownCurrencyRejectsOnlyItsRow() {
+        // R21: '֏' became its own currency; a 4-letter value aborted the whole commit
+        var settings = new MappingSettings(true, "AMD", "dd.MM.yyyy", ".", List.of("Doc", "SKU"), null, List.of("RETURN"), "Asia/Yerevan", null, null);
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.SALE_LINE, "sales",
+            Map.of("document_number", "Doc", "occurred_at", "Date", "operation_type", "Op", "sku_code", "SKU", "quantity", "Qty",
+                "gross_amount", "Amount", "currency", "Cur"), settings));
+
+        CommitReport r = commit(m, "c.csv", "Doc,Date,Op,SKU,Qty,Amount,Cur\nS-1,02.09.2026,SALE,A,1,1000,֏\nS-2,02.09.2026,SALE,B,1,1000,amd\n"
+            + "S-3,02.09.2026,SALE,C,1,1000,DRAMS\n");
+
+        assertThat(r.rowsCommitted()).isEqualTo(2);
+        assertThat(codes(r)).contains("bad_currency");
+        assertThat(sql("SELECT string_agg(DISTINCT currency, ',') FROM sale_lines")).isEqualTo("AMD");
+    }
+
+    @Test
+    void bankRowWithNeitherCreditNorDebit_isRejected() {
+        // R42: it was stored as a 0.00 transaction
+        var settings = new MappingSettings(null, "AMD", "dd.MM.yyyy", ",", List.of("Doc"), null, null, "Asia/Yerevan", "Ameria main", null);
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.BANK, TargetEntity.BANK_TRANSACTION, "bank",
+            Map.of("occurred_at", "Date", "credit", "In", "debit", "Out", "txn_id", "Doc"), settings));
+
+        CommitReport r = commit(m, "b.csv", "Doc,Date,In,Out\nD-1,01.09.2026,,\n");
+
+        assertThat(r.rowsRejected()).isEqualTo(1);
+        assertThat(sql("SELECT count(*)::text FROM bank_transactions")).isEqualTo("0");
+    }
+
+    @Test
+    void stockDateInTheMappingsOwnFormat_isAccepted() {
+        // R6: asOfDate was read only as ISO and crashed the commit otherwise
+        var settings = new MappingSettings(null, "AMD", "dd.MM.yyyy", ".", List.of("SKU", "Store"), null, null, "Asia/Yerevan", null, "30.09.2026");
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.INVENTORY_SNAPSHOT, "stock",
+            Map.of("sku_code", "SKU", "warehouse", "Store", "quantity", "Qty"), settings));
+
+        CommitReport r = commit(m, "s.csv", "SKU,Store,Qty\nA,Main,5\n");
+
+        assertThat(r.errorCount()).isZero();
+        assertThat(sql("SELECT as_of_date::text FROM inventory_snapshots")).isEqualTo("2026-09-30");
+    }
+
     private CommitReport sales(String amountField, String rows) {
         var settings = new MappingSettings(true, "AMD", "dd.MM.yyyy", ".", List.of("Doc", "SKU"), null, List.of("RETURN"), "Asia/Yerevan", null, null);
         var fields = new HashMap<>(Map.of("document_number", "Doc", "occurred_at", "Date", "operation_type", "Op", "sku_code", "SKU",

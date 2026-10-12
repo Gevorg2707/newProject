@@ -19,7 +19,9 @@ public final class ValueConverters {
     private ValueConverters() {
     }
 
-    private static final Pattern NUMBER_CORE = Pattern.compile("^[^0-9.,()\\-]*([0-9.,()\\-]+)[^0-9.,()\\-]*$");
+    /** Only a currency sign or code may stand before or after the number; anything else ("%", "E+3", "Dr", "#DIV/0!") is not an amount. */
+    private static final String CURRENCY = "(?:amd|դր\\.?|դրամ|֏|usd|\\$|eur|€|rub|руб\\.?|₽)?";
+    private static final Pattern NUMBER_CORE = Pattern.compile("^(?iu)" + CURRENCY + "([0-9.,()\\-]+)" + CURRENCY + "$");
     private static final Pattern GROUPED = Pattern.compile("^\\d{1,3}(X\\d{3})+$");
 
     /**
@@ -99,11 +101,11 @@ public final class ValueConverters {
         String v = raw.trim();
         ZoneId zone = ZoneId.of(s.timezoneOrDefault());
         String pattern = s.dateFormat() == null ? "dd.MM.yyyy" : s.dateFormat();
-        for (String p : new String[]{pattern + " HH:mm:ss", pattern + " HH:mm", pattern}) {
+        for (String p : new String[]{pattern + " H:mm:ss", pattern + " H:mm", pattern}) {   // 'H': 9:07 and 09:07 (R66)
             try {
                 // STRICT: 31.02 is an error, not 28.02. STRICT needs 'u' (proleptic year) instead of 'y' (year of era).
                 DateTimeFormatter f = DateTimeFormatter.ofPattern(p.replace('y', 'u')).withResolverStyle(java.time.format.ResolverStyle.STRICT);
-                if (p.contains("HH")) {
+                if (p.contains("H")) {
                     return Optional.of(LocalDateTime.parse(v, f).atZone(zone).toOffsetDateTime());
                 }
                 return Optional.of(LocalDate.parse(v, f).atStartOfDay(zone).toOffsetDateTime());

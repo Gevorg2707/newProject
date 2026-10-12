@@ -72,6 +72,11 @@ public class WeeklyReportService {
      * Runs reconciliation for the same period first (idempotent per period: it replaces the previous run), so the
      * bank sheet always matches the data the report was built from.
      */
+    public String tenantName(TenantId tenant) {
+        return tenantTx.inTenant(tenant, j -> j.sql("SELECT name FROM tenants WHERE id = :id")
+            .param("id", tenant.value()).query(String.class).optional().orElse(tenant.toString()));
+    }
+
     public byte[] generate(TenantId tenant, LocalDate from, LocalDate to, KpiSettings settings) {
         ReconciliationReport recon = reconciliation.reconcile(tenant, from, to, ReconciliationSettings.defaults());
         KpiReport kpi = kpiService.compute(tenant, from, to, settings);

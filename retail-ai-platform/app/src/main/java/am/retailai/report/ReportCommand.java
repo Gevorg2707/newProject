@@ -32,11 +32,24 @@ public class ReportCommand implements ApplicationRunner {
         TenantId tenant = TenantId.of(required(args, "tenant"));
         LocalDate from = LocalDate.parse(required(args, "from"));
         LocalDate to = LocalDate.parse(required(args, "to"));
-        Path out = Path.of(args.containsOption("out") ? args.getOptionValues("out").getFirst() : "report-" + from + "_" + to + ".xlsx");
+        Path out = outputPath(args, Path.of("."), reports.tenantName(tenant), from, to);
         KpiSettings settings = settings(args);
 
         Files.write(out, reports.generate(tenant, from, to, settings));
         System.out.println("Report written: " + out.toAbsolutePath() + " (VAT rate " + settings.vatRate().toPlainString() + ")");
+    }
+
+    /**
+     * Reports are files sent to clients by hand, so the file name carries the client and an existing file is never
+     * overwritten silently: that is the only boundary between clients on the operator's disk (R72).
+     */
+    static Path outputPath(ApplicationArguments args, Path dir, String tenantName, LocalDate from, LocalDate to) {
+        Path out = args.containsOption("out") ? Path.of(args.getOptionValues("out").getFirst())
+            : dir.resolve("report_" + tenantName.replaceAll("[^\\p{L}\\p{N}-]+", "_") + "_" + from + "_" + to + ".xlsx");
+        if (Files.exists(out) && !"true".equals(opt(args, "overwrite", "false"))) {
+            throw new IllegalArgumentException(out + " already exists. Pass --overwrite=true, or another --out");
+        }
+        return out;
     }
 
     static KpiSettings settings(ApplicationArguments args) {

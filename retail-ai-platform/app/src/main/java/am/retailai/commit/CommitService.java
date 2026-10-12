@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -182,7 +183,7 @@ public class CommitService {
         BigDecimal discount = r.decimal("discount_amount", false).orElse(BigDecimal.ZERO);
         BigDecimal vat = r.decimal("vat_amount", false).orElse(null);
         BigDecimal cogs = r.decimal("cogs_amount", false).orElse(null);
-        String currency = r.text("currency") != null ? r.text("currency") : s.currencyOr("AMD");
+        String currency = r.currency();
 
         if (s.vatIncluded() == null) {
             r.warn("vat_unknown", "gross_amount", "VAT inclusion not confirmed; net sales KPIs will be flagged");
@@ -265,7 +266,14 @@ public class CommitService {
         BigDecimal cost = r.decimal("cost_per_unit", false).orElse(null);
         BigDecimal price = r.decimal("sale_price", false).orElse(null);
         LocalDate asOf = r.date("as_of_date", false).orElse(null);
-        if (asOf == null && s.asOfDate() != null) asOf = LocalDate.parse(s.asOfDate());
+        if (asOf == null && s.asOfDate() != null) {
+            // in the mapping's own date format or ISO (R6); an unreadable value is a row error, not a crashed commit
+            asOf = ValueConverters.date(s.asOfDate(), s).orElse(null);
+            if (asOf == null) {
+                r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "bad_date", "as_of_date",
+                    "asOfDate '" + s.asOfDate() + "' in mapping settings is not a date in format " + s.dateFormat() + " or yyyy-MM-dd"));
+            }
+        }
         if (asOf == null) {
             r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "as_of_date",
                 "Snapshot date is neither in the file nor in mapping settings"));
@@ -314,6 +322,7 @@ public class CommitService {
             r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "multi_day_row", "date_end",
                 "Row covers " + date + " – " + end + ". Export with Breakdown → By time → Day, one row per day"));
         }
+        String currency = r.currency();
         if (r.hasErrors()) return Write.UNCHANGED;
 
         String campaignId = r.text("campaign_id") != null ? r.text("campaign_id") : name;
@@ -339,7 +348,7 @@ public class CommitService {
             .param("name", name).param("adset", r.text("adset_name"))
             .param("akey", r.text("adset_name") == null ? "" : r.text("adset_name")).param("spend", spend)
             .param("imp", impressions == null ? null : impressions.longValue()).param("clicks", clicks == null ? null : clicks.longValue())
-            .param("res", results).param("cur", r.text("currency") != null ? r.text("currency") : s.currencyOr("AMD")).param("fin", isFinal));
+            .param("res", results).param("cur", currency).param("fin", isFinal));
     }
 
     private Write bankTransaction(JdbcClient jdbc, TenantId tenant, UUID batch, RowContext r, MappingSettings s) {
@@ -349,9 +358,16 @@ public class CommitService {
             amount = r.decimal("amount", true).orElse(null);
         } else {
             // The column is the direction; a sign or parentheses inside it is only the bank's formatting.
-            BigDecimal credit = r.decimal("credit", false).orElse(BigDecimal.ZERO).abs();
-            BigDecimal debit = r.decimal("debit", false).orElse(BigDecimal.ZERO).abs();
+            Optional<BigDecimal> creditCell = r.decimal("credit", false);
+            Optional<BigDecimal> debitCell = r.decimal("debit", false);
+            BigDecimal credit = creditCell.orElse(BigDecimal.ZERO).abs();
+            BigDecimal debit = debitCell.orElse(BigDecimal.ZERO).abs();
             amount = credit.subtract(debit);
+            if (creditCell.isEmpty() && debitCell.isEmpty() && !r.hasErrors()
+                && (r.mapping.headerFor("credit") != null || r.mapping.headerFor("debit") != null)) {
+                r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "amount",
+                    "Neither credit nor debit has a value; a 0.00 transaction would corrupt the balance chain"));   // R42
+            }
             if (r.mapping.headerFor("credit") == null && r.mapping.headerFor("debit") == null) {
                 r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "amount",
                     "Map either 'amount' or 'credit'/'debit'"));
@@ -364,6 +380,7 @@ public class CommitService {
             r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "account_ref",
                 "Account label must be set in mapping settings"));
         }
+        String currency = r.currency();
         if (r.hasErrors()) return Write.UNCHANGED;
 
         // The import identity is stable across runs (unlike a hash of an unordered map), so it is the fallback id.
@@ -403,7 +420,7 @@ public class CommitService {
             .param("internal", internal).param("reason", internal ? "own_account_marker" : null)
             .param("tags", BankDescriptionTagger.tags(r.text("description")).toArray(String[]::new))
             .param("t", tenant.value()).param("b", batch).param("acc", accountRef).param("txn", txnId).param("at", at).param("amt", amount)
-            .param("cur", r.text("currency") != null ? r.text("currency") : s.currencyOr("AMD")).param("bal", balance)
+            .param("cur", currency).param("bal", balance)
             .param("desc", ValueConverters.maskDescription(r.text("description"))));
     }
 

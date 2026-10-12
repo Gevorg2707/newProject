@@ -74,4 +74,20 @@ class PilotCliIT {
         assertThat(k.cogs()).isCloseTo(new BigDecimal("3365800.00"), within(cent));
         assertThat(k.grossProfit()).isCloseTo(new BigDecimal("1159616.67"), within(cent));
     }
+
+    @Test
+    void fileLargerThanTheLimit_isRefusedBeforeReading() throws Exception {
+        // R18: a sparse file, so the test does not write 50 MB
+        Path big = Files.createTempFile("big", ".csv");
+        try (var f = new java.io.RandomAccessFile(big.toFile(), "rw")) {
+            f.setLength(PilotCli.MAX_FILE_BYTES + 1);
+        }
+        PrintStream out = new PrintStream(new ByteArrayOutputStream(), true, "UTF-8");
+        TenantId tenant = cli.createTenant("Big File Shop", out);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() ->
+                cli.importFile(tenant, big, Path.of("src/test/resources/fixtures/hc_sales_v1.json"), "gevorg", out))
+            .hasMessageContaining("MB");
+        Files.delete(big);
+    }
 }

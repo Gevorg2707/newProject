@@ -50,6 +50,8 @@ public class PilotCli {
         return new TenantId(id);
     }
 
+    static final long MAX_FILE_BYTES = 50L * 1024 * 1024;
+
     /**
      * Deletes every row of one client, then the client itself. The exact client name must be typed as confirmation.
      * Report files already sent and the operator's local copies of received files are outside the database: delete them too.
@@ -157,6 +159,10 @@ public class PilotCli {
     public CommitReport importFile(TenantId tenant, Path file, Path mappingJson, String uploadedBy, PrintStream out) throws IOException {
         MappingFile mf = MappingFile.read(mappingJson, json);
         ColumnMapping mapping = mappings.save(tenant, mf.toMapping());
+        if (Files.size(file) > MAX_FILE_BYTES) {   // every parser holds the whole file and its rows in memory (R18)
+            throw new IllegalArgumentException(file.getFileName() + " is larger than " + MAX_FILE_BYTES / (1024 * 1024)
+                + " MB. Export a shorter period per file. Nothing was imported.");
+        }
         byte[] bytes = Files.readAllBytes(file);
 
         ImportResult up = imports.upload(tenant, ImportSpec.forMapping(mapping), file.getFileName().toString(), bytes, uploadedBy);

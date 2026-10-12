@@ -1,6 +1,7 @@
 # Pilot runbook (no UI)
 
-Full cycle for one pilot client, from files to the weekly report. Commands run from `app/` after `mvn package`.
+Full cycle for one pilot client, from files to the weekly report. Commands run from `app/` after `mvn package -DskipTests`
+(tests use their own `TEST_DB_*` variables and the local `retail_test` database; never point them at client data).
 
 ```bash
 export DB_PASSWORD='<the retail_app password>'   # required: there is no default password
@@ -20,7 +21,8 @@ $J --import.run=true --tenant=<id> --file=BANK_statement.csv                --ma
 $J --import.run=true --tenant=<id> --file=ameria_2026-09.sta                --mapping=../docs/samples/mappings/bank_mt940_v1.json   # MT940
 
 # 3. Weekly report
-$J --report.run=true --tenant=<id> --from=2026-09-01 --to=2026-09-30 --out=report.xlsx [--variable-cost=2000 --formulas-confirmed=true]
+$J --report.run=true --tenant=<id> --from=2026-09-01 --to=2026-09-30 [--variable-cost=2000 --formulas-confirmed=true]
+#    writes report_<client>_<from>_<to>.xlsx; an existing file is not overwritten without --overwrite=true
 #    --vat-rate is a fraction (0.20 = 20%, 0 for a non-payer); the default is 0.20
 #    --variable-cost is per unit sold (delivery + card fee + returns reserve), an assumption until the accountant confirms
 

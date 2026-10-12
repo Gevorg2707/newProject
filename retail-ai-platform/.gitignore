@@ -1,0 +1,12 @@
+# Client files and reports must never be committed (R35). The runbook runs the CLI from app/.
+app/*.xlsx
+app/*.xls
+app/*.csv
+app/*.sta
+app/*.mt940
+app/*.940
+app/report*.xlsx
+app/clients/
+# samples and test fixtures are synthetic and stay tracked
+!docs/samples/**
+!app/src/test/resources/**

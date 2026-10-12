@@ -329,6 +329,25 @@ class ImportIntegrityIT {
     }
 
     @Test
+    void fileRefusedAtParseTime_leavesAnAuditRecord() {
+        // R74: the refusal rolled back together with everything else
+        byte[] cp1251 = "Doc,Date\nН-1,01.09.2026\n".getBytes(java.nio.charset.Charset.forName("windows-1251"));
+        assertThatThrownBy(() -> imports.upload(tenant, ImportSpec.forMapping(sales(List.of("Doc", "SKU"))), "bad.csv", cp1251, "test"))
+            .hasMessageContaining("UTF-8");
+
+        assertThat(sql("SELECT count(*)::text FROM import_batches")).isEqualTo("0");
+        assertThat(sql("SELECT details->>'file' FROM audit_events WHERE action = 'import.refused'")).isEqualTo("bad.csv");
+    }
+
+    @Test
+    void importWritesAnAuditEvent_withItsCounts() {
+        // R51
+        load(sales(List.of("Doc", "SKU")), "w1.csv", HEADER + "H-1,01.09.2026,SALE,A,2,70000,\n");
+        assertThat(sql("SELECT (details->>'inserted') || '/' || (details->>'rejected') FROM audit_events WHERE action = 'import.upload'"))
+            .isEqualTo("1/0");
+    }
+
+    @Test
     void purgeRaw_emptiesOriginalRows_andMarksTheBatchPurged() {
         load(sales(List.of("Doc", "SKU")), "w1.csv", HEADER + "H-1,01.09.2026,SALE,A,2,70000,\n");
 
