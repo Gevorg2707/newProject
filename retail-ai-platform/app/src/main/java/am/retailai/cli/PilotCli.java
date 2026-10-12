@@ -5,6 +5,7 @@ import am.retailai.commit.CommitService;
 import am.retailai.commit.ValidationIssue;
 import am.retailai.imports.ImportResult;
 import am.retailai.imports.ImportService;
+import am.retailai.imports.ImportSpec;
 import am.retailai.mapping.ColumnMapping;
 import am.retailai.mapping.MappingRepository;
 import am.retailai.tenant.TenantId;
@@ -17,6 +18,7 @@ import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -48,6 +50,48 @@ public class PilotCli {
         return new TenantId(id);
     }
 
+    /**
+     * Deletes every row of one client, then the client itself. The exact client name must be typed as confirmation.
+     * Report files already sent and the operator's local copies of received files are outside the database: delete them too.
+     */
+    public void deleteTenant(TenantId tenant, String confirmName, PrintStream out) {
+        String name = jdbc.sql("SELECT name FROM tenants WHERE id = :id").param("id", tenant.value()).query(String.class).optional()
+            .orElseThrow(() -> new IllegalArgumentException("Tenant " + tenant + " not found"));
+        if (!name.equals(confirmName)) {
+            throw new IllegalArgumentException("To confirm deletion pass --confirm with the exact client name '" + name + "'");
+        }
+        Map<String, Integer> counts = tenantTx.inTenant(tenant, j -> {
+            Map<String, Integer> c = new java.util.LinkedHashMap<>();
+            for (String t : List.of("recommendation_decisions", "recommendations", "reconciliation_matches", "validation_issues",
+                "bank_transactions", "campaign_daily", "inventory_snapshots", "sale_lines", "product_aliases", "products",
+                "column_mappings", "tenant_own_accounts", "source_records", "audit_events", "import_batches")) {
+                c.put(t, j.sql("DELETE FROM " + t).update());   // RLS limits every DELETE to this tenant
+            }
+            return c;
+        });
+        jdbc.sql("DELETE FROM tenants WHERE id = :id").param("id", tenant.value()).update();
+        out.println("Deleted client " + tenant + " (" + name + "): " + counts);
+    }
+
+    /**
+     * Empties the stored original rows (raw_payload) of batches imported more than {@code olderThanDays} days ago and marks
+     * them 'purged'. Typed domain data stays. A purged batch can no longer be re-committed: re-import the file instead.
+     */
+    public int purgeRaw(TenantId tenant, int olderThanDays, PrintStream out) {
+        int rows = tenantTx.inTenant(tenant, j -> {
+            int n = j.sql("""
+                    UPDATE source_records SET raw_payload = '{}'::jsonb
+                    WHERE raw_payload <> '{}'::jsonb AND import_batch_id IN (
+                        SELECT id FROM import_batches WHERE status <> 'purged' AND ingested_at <= now() - make_interval(days => :d))
+                    """).param("d", olderThanDays).update();
+            j.sql("UPDATE import_batches SET status = 'purged', updated_at = now() WHERE status <> 'purged' AND ingested_at <= now() - make_interval(days => :d)")
+                .param("d", olderThanDays).update();
+            return n;
+        });
+        out.println("Purged original rows: " + rows + " (batches older than " + olderThanDays + " days)");
+        return rows;
+    }
+
     /** Registers an own account so statement lines mentioning it are treated as internal transfers. */
     public void addOwnAccount(TenantId tenant, String label, String numberFragment, PrintStream out) {
         String digits = numberFragment.replaceAll("[\\s-]", "");
@@ -64,18 +108,21 @@ public class PilotCli {
         ColumnMapping mapping = mappings.save(tenant, mf.toMapping());
         byte[] bytes = Files.readAllBytes(file);
 
-        ImportResult up = imports.upload(tenant, mapping.sourceSystem(), file.getFileName().toString(), bytes, uploadedBy,
-            mapping.settings().idColumns());
+        ImportResult up = imports.upload(tenant, ImportSpec.forMapping(mapping), file.getFileName().toString(), bytes, uploadedBy);
         if (up.duplicate()) {
-            out.println("Duplicate file (same sha256) - already imported as batch " + up.batchId() + ". Nothing changed.");
-            return new CommitReport(up.batchId(), 0, 0, 0, 0, java.util.List.of());
+            // Same file again: re-commit it with the current mapping. This is how a fixed mapping reaches rows that were
+            // rejected before, and how a batch whose commit failed gets committed. Re-commit is idempotent.
+            out.println("Same file was already imported as batch " + up.batchId() + " (status " + up.batchStatus()
+                + "); re-applying the current mapping to it.");
+        } else {
+            out.printf("Uploaded %s: %d rows parsed, %d new, %d updated, %d already known, %d rejected at import (batch %s)%n",
+                file.getFileName(), up.rowsParsed(), up.rowsInserted(), up.rowsUpdated(), up.rowsAlreadyKnown(),
+                up.rowsRejectedAtImport(), up.batchId());
         }
-        out.printf("Uploaded %s: %d rows parsed, %d new, %d updated, %d already known (batch %s)%n",
-            file.getFileName(), up.rowsParsed(), up.rowsInserted(), up.rowsUpdated(), up.rowsAlreadyKnown(), up.batchId());
 
         CommitReport report = commits.commit(tenant, up.batchId(), mapping);
-        out.printf("Committed to %s: %d written, %d rejected, %d already present; %d errors, %d warnings%n",
-            mapping.targetEntity(), report.rowsCommitted(), report.rowsRejected(), report.rowsAlreadyPresent(),
+        out.printf("Committed to %s: %d written, %d updated, %d rejected, %d already present; %d errors, %d warnings%n",
+            mapping.targetEntity(), report.rowsCommitted(), report.rowsUpdated(), report.rowsRejected(), report.rowsAlreadyPresent(),
             report.errorCount(), report.warningCount());
         Map<String, Long> byCode = report.issues().stream()
             .collect(Collectors.groupingBy(i -> i.severity() + ":" + i.code(), java.util.TreeMap::new, Collectors.counting()));

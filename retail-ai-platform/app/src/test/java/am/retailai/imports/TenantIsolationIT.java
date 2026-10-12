@@ -30,7 +30,7 @@ class TenantIsolationIT {
         TenantId b = newTenant("Shop B");
         byte[] csv = Fixtures.bytes("fixtures/synthetic_meta_campaign_daily.csv");
 
-        importService.upload(a, SourceSystem.META_ADS, "meta.csv", csv, "owner-a", List.of());
+        importService.upload(a, am.retailai.imports.ImportSpec.allColumns(SourceSystem.META_ADS, List.of()), "meta.csv", csv, "owner-a");
 
         int seenByA = tenantTx.inTenant(a, j -> j.sql("SELECT count(*) FROM source_records").query(Integer.class).single());
         int seenByB = tenantTx.inTenant(b, j -> j.sql("SELECT count(*) FROM source_records").query(Integer.class).single());

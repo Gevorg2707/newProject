@@ -63,7 +63,7 @@ class CommitServiceIT {
     void hcSales_areCommittedTyped_returnsRecognized_andRecommitIsNoop() throws IOException {
         byte[] file = Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx");
         ColumnMapping mapping = mappings.save(tenant, hcSalesMapping(true));
-        ImportResult imported = importService.upload(tenant, SourceSystem.HC_TRADE, "HC_sales.xlsx", file, "tester", mapping.settings().idColumns());
+        ImportResult imported = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.HC_TRADE, mapping.settings().idColumns()), "HC_sales.xlsx", file, "tester");
 
         CommitReport first = commitService.commit(tenant, imported.batchId(), mapping);
 
@@ -92,7 +92,7 @@ class CommitServiceIT {
     void vatNotConfirmed_producesWarningPerRow_butRowsAreStillCommitted() throws IOException {
         byte[] file = Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx");
         ColumnMapping mapping = mappings.save(tenant, hcSalesMapping(null));
-        ImportResult imported = importService.upload(tenant, SourceSystem.HC_TRADE, "HC_sales.xlsx", file, "tester", mapping.settings().idColumns());
+        ImportResult imported = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.HC_TRADE, mapping.settings().idColumns()), "HC_sales.xlsx", file, "tester");
 
         CommitReport report = commitService.commit(tenant, imported.batchId(), mapping);
 
@@ -113,10 +113,10 @@ class CommitServiceIT {
         String v1 = "Reporting starts,Reporting ends,Campaign name,Amount spent (AMD),Impressions,Link clicks,Results,Currency\n"
             + "2026-09-01,2026-09-01,Autumn_Shirts_Conv,12500,48210,640,11,AMD\n";
         String v2 = v1.replace("12500,48210,640,11", "12900,48900,655,12"); // Meta restates the day
-        ImportResult i1 = importService.upload(tenant, SourceSystem.META_ADS, "m1.csv", v1.getBytes(), "mkt", settings.idColumns());
+        ImportResult i1 = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.META_ADS, settings.idColumns()), "m1.csv", v1.getBytes(), "mkt");
         CommitReport r1 = commitService.commit(tenant, i1.batchId(), mapping);
 
-        ImportResult i2 = importService.upload(tenant, SourceSystem.META_ADS, "m2.csv", v2.getBytes(), "mkt", settings.idColumns());
+        ImportResult i2 = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.META_ADS, settings.idColumns()), "m2.csv", v2.getBytes(), "mkt");
         CommitReport r2 = commitService.commit(tenant, i2.batchId(), mapping);
 
         assertThat(i1.rowsInserted()).isEqualTo(1);
@@ -125,7 +125,8 @@ class CommitServiceIT {
         assertThat(inTenant("SELECT source_version FROM source_records")).isEqualTo(2);
 
         assertThat(r1.rowsCommitted()).isEqualTo(1);
-        assertThat(r2.rowsCommitted()).isEqualTo(1);
+        assertThat(r2.rowsCommitted()).isZero();
+        assertThat(r2.rowsUpdated()).isEqualTo(1);
         assertThat(inTenant("SELECT count(*) FROM campaign_daily")).isEqualTo(1);
         assertThat(inTenant("SELECT source_version FROM campaign_daily")).isEqualTo(2);
         BigDecimal spend = tenantTx.inTenant(tenant, j -> j.sql("SELECT spend FROM campaign_daily").query(BigDecimal.class).single());
@@ -140,7 +141,7 @@ class CommitServiceIT {
             Map.of("occurred_at", "Ամսաթիվ", "credit", "Մուտք", "debit", "Ելք", "currency", "Արժույթ",
                 "balance_after", "Մնացորդ", "description", "Նշանակում", "txn_id", "Փաստաթուղթ"), settings));
         byte[] file = Fixtures.bytes("fixtures/synthetic_bank_statement.csv");
-        ImportResult imported = importService.upload(tenant, SourceSystem.BANK, "stmt.csv", file, "acc", settings.idColumns());
+        ImportResult imported = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.BANK, settings.idColumns()), "stmt.csv", file, "acc");
 
         CommitReport report = commitService.commit(tenant, imported.batchId(), mapping);
 

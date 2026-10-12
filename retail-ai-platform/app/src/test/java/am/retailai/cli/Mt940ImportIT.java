@@ -57,6 +57,71 @@ class Mt940ImportIT {
         assertThat(sql(t, "SELECT count(*)::text FROM bank_transactions")).isEqualTo("0");
     }
 
+    @Test
+    void twoEqualLinesWithoutReference_areBothKept_andTheFullAccountNeverBecomesARecordId() throws Exception {
+        TenantId t = cli.createTenant("NONREF Shop", out);
+        Path sta = Files.createTempFile("nonref", ".sta");
+        Files.writeString(sta, """
+            {1:F01SYNTHAMXXXXX0000000000}{2:I940XXXXXXXXXXXXN}{4:
+            :20:STMT20260905
+            :25:AM1570012345670000
+            :28C:00002/001
+            :60F:C260904AMD1000000,00
+            :61:2609050905D5000,00NTRFNONREF
+            :86:Կոմունալ վճար
+            :61:2609050905D5000,00NTRFNONREF
+            :86:Կոմունալ վճար
+            :62F:C260905AMD990000,00
+            -}
+            """);
+
+        CommitReport r = cli.importFile(t, sta, mapping, "acc", out);
+
+        assertThat(r.rowsCommitted()).isEqualTo(2);
+        assertThat(sql(t, "SELECT count(*)::text FROM bank_transactions")).isEqualTo("2");
+        assertThat(sql(t, "SELECT count(*)::text FROM source_records WHERE source_record_id LIKE '%12345670000%'")).isEqualTo("0");
+        assertThat(sql(t, "SELECT count(*)::text FROM validation_issues WHERE code = 'txn_id_derived'")).isEqualTo("0");
+    }
+
+    @Test
+    void overlappingStatements_storeTheSharedLineOnce() throws Exception {
+        TenantId t = cli.createTenant("Overlap Shop", out);
+        cli.importFile(t, Path.of("src/test/resources/fixtures/synthetic_statement.sta"), mapping, "acc", out);
+        Path next = Files.createTempFile("next", ".sta");
+        Files.writeString(next, """
+            {1:F01SYNTHAMXXXXX0000000000}{2:I940XXXXXXXXXXXXN}{4:
+            :20:STMT20260903
+            :25:AM1570012345670000
+            :28C:00002/001
+            :60F:C260901AMD2448000,00
+            :61:260902D300000,00NTRFNONREF
+            :86:Փոխանցում սեփական հաշվից
+            1570012345670001
+            :61:2609030903C50000,00NTRFTRX-88300
+            :86:Վաճառքից մուտք
+            :62F:C260903AMD2198000,00
+            -}
+            """);
+
+        CommitReport r = cli.importFile(t, next, mapping, "acc", out);
+
+        assertThat(r.rowsCommitted()).isEqualTo(1);
+        assertThat(sql(t, "SELECT count(*)::text FROM bank_transactions")).isEqualTo("4");
+    }
+
+    @Test
+    void sameStatementTwice_changesNothing_forOrdinaryLines() throws Exception {
+        TenantId t = cli.createTenant("Twice Shop", out);
+        Path sta = Path.of("src/test/resources/fixtures/synthetic_statement.sta");
+        cli.importFile(t, sta, mapping, "acc", out);
+
+        CommitReport second = cli.importFile(t, sta, mapping, "acc", out);
+
+        assertThat(second.rowsUpdated()).isZero();
+        assertThat(second.rowsAlreadyPresent()).isEqualTo(3);
+        assertThat(sql(t, "SELECT max(source_version)::text FROM bank_transactions")).isEqualTo("1");
+    }
+
     private String sql(TenantId t, String q) {
         return tenantTx.inTenant(t, j -> j.sql(q).query(String.class).single());
     }

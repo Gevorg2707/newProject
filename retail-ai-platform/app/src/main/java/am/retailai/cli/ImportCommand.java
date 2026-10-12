@@ -14,6 +14,8 @@ import java.nio.file.Path;
  *   --tenant.create="Shop name"                      → prints the new tenant id
  *   --import.run=true --tenant=<uuid> --file=sales.xlsx --mapping=hc_sales_v1.json [--by=name]
  *   --own-account.add=<account digits> --label="Ameria reserve" --tenant=<uuid>
+ *   --tenant.delete=<uuid> --confirm="<exact client name>"   → deletes every row of that client
+ *   --purge-raw=<days> --tenant=<uuid>                         → empties original rows of batches older than <days>
  *   --recommendation.decide=<id> --decision=ACCEPTED|REJECTED|NEED_DATA --tenant=<uuid> --by=name [--comment="..."]
  * Report generation lives in ReportCommand (--report.run=true).
  * Without these options the runner does nothing, so it is safe to keep it always registered.
@@ -33,6 +35,12 @@ public class ImportCommand implements ApplicationRunner {
     public void run(ApplicationArguments args) throws Exception {
         if (args.containsOption("tenant.create")) {
             cli.createTenant(args.getOptionValues("tenant.create").getFirst(), System.out);
+        }
+        if (args.containsOption("tenant.delete")) {
+            cli.deleteTenant(TenantId.of(args.getOptionValues("tenant.delete").getFirst()), required(args, "confirm"), System.out);
+        }
+        if (args.containsOption("purge-raw")) {
+            cli.purgeRaw(TenantId.of(required(args, "tenant")), Integer.parseInt(args.getOptionValues("purge-raw").getFirst()), System.out);
         }
         if (args.containsOption("recommendation.decide")) {
             java.util.UUID id = java.util.UUID.fromString(args.getOptionValues("recommendation.decide").getFirst());

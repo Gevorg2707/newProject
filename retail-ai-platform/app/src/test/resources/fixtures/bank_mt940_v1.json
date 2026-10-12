@@ -1,14 +1,13 @@
 {
   "sourceSystem": "BANK",
   "targetEntity": "BANK_TRANSACTION",
-  "name": "MT940 statement v1 (fixed keys produced by Mt940Parser; works for any bank that issues SWIFT MT940)",
+  "name": "MT940 statement v1 (fixed keys produced by Mt940Parser; row identity = account tail + date + amount + running balance + references, never the full account number)",
   "fieldToHeader": {
     "occurred_at": "value_date",
     "amount": "amount",
     "currency": "currency",
     "balance_after": "balance_after",
     "description": "description",
-    "txn_id": "reference",
     "account_ref": "account"
   },
   "settings": {
@@ -16,7 +15,14 @@
     "currency": "AMD",
     "dateFormat": "yyyy-MM-dd",
     "decimalSeparator": ".",
-    "idColumns": ["statement_ref", "account", "reference"],
+    "idColumns": [
+      "account_tail",
+      "value_date",
+      "amount",
+      "balance_after",
+      "reference",
+      "bank_reference"
+    ],
     "platform": null,
     "returnMarkers": null,
     "timezone": "Asia/Yerevan",

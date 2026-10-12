@@ -55,8 +55,7 @@ class WeeklyReportServiceIT {
                 Map.entry("sku_name", "Ապրանքի անվանում"), Map.entry("quantity", "Քանակ"),
                 Map.entry("gross_amount", "Գումար (ԱԱՍ-ով)".replace("ԱԱՍ", "ԱԱՀ")), Map.entry("discount_amount", "Զեղչ"),
                 Map.entry("cogs_amount", "Ինքնարժեք (առանց ԱԱՀ)")), settings));
-        ImportResult imported = importService.upload(tenant, SourceSystem.HC_TRADE, "HC_sales.xlsx",
-            Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx"), "tester", settings.idColumns());
+        ImportResult imported = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.HC_TRADE, settings.idColumns()), "HC_sales.xlsx", Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx"), "tester");
         commitService.commit(tenant, imported.batchId(), mapping);
 
         byte[] xlsx = reports.generate(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());
@@ -105,8 +104,7 @@ class WeeklyReportServiceIT {
         TenantId tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('Cash Report Shop') RETURNING id").query(UUID.class).single());
         var mf = am.retailai.cli.MappingFile.read(Path.of("src/test/resources/fixtures/bank_mt940_v1.json"), tools.jackson.databind.json.JsonMapper.builder().build());
         ColumnMapping mapping = mappings.save(tenant, mf.toMapping());
-        ImportResult up = importService.upload(tenant, SourceSystem.BANK, "ameria_2026-09.sta",
-            Fixtures.bytes("fixtures/synthetic_statement.sta"), "acc", mapping.settings().idColumns());
+        ImportResult up = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.BANK, mapping.settings().idColumns()), "ameria_2026-09.sta", Fixtures.bytes("fixtures/synthetic_statement.sta"), "acc");
         commitService.commit(tenant, up.batchId(), mapping);
 
         byte[] xlsx = reports.generate(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());

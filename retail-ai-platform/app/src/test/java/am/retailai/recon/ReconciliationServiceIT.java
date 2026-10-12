@@ -143,7 +143,7 @@ class ReconciliationServiceIT {
         ColumnMapping mapping = mappings.save(tenant, new ColumnMapping(null, SourceSystem.BANK, TargetEntity.BANK_TRANSACTION, "bank v1",
             Map.of("occurred_at", "Ամսաթիվ", "credit", "Մուտք", "debit", "Ելք", "currency", "Արժույթ",
                 "balance_after", "Մնացորդ", "description", "Նշանակում", "txn_id", "Փաստաթուղթ"), settings));
-        ImportResult up = importService.upload(tenant, SourceSystem.BANK, "stmt.csv", Fixtures.bytes("fixtures/synthetic_bank_statement.csv"), "acc", settings.idColumns());
+        ImportResult up = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.BANK, settings.idColumns()), "stmt.csv", Fixtures.bytes("fixtures/synthetic_bank_statement.csv"), "acc");
         commitService.commit(tenant, up.batchId(), mapping);
 
         String reason = tenantTx.inTenant(tenant, j -> j.sql("SELECT internal_transfer_reason FROM bank_transactions WHERE txn_id = 'TRX-88215'").query(String.class).single());

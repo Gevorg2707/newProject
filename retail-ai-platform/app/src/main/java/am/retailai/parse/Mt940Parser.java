@@ -75,6 +75,7 @@ public class Mt940Parser implements TabularParser {
                     cells.put("amount", signedAmt.setScale(2).toPlainString());
                     cells.put("currency", s.currency);
                     cells.put("account", s.account == null ? "" : s.account);
+                    cells.put("account_tail", accountTail(s.account));
                     cells.put("reference", "NONREF".equalsIgnoreCase(ref) ? "" : ref);
                     cells.put("bank_reference", m.group(8) == null ? "" : m.group(8).trim());
                     cells.put("type_code", m.group(6));
@@ -167,5 +168,12 @@ public class Mt940Parser implements TabularParser {
         Statement(String ref) {
             this.ref = ref;
         }
+    }
+
+    /** Last 4 letters/digits of the account: enough to tell the client's accounts apart, never the full number. */
+    static String accountTail(String account) {
+        if (account == null) return "";
+        String alnum = account.replaceAll("[^A-Za-z0-9]", "");
+        return alnum.length() <= 4 ? alnum : alnum.substring(alnum.length() - 4);
     }
 }

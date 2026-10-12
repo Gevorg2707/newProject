@@ -10,32 +10,30 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Derives a stable source_record_id for a row. If the mapping names id columns, their values are joined;
- * otherwise the id is the sha256 of the normalized row content (all cells, header order), so re-uploading
- * the same data yields the same id and the UNIQUE constraint turns the second insert into a no-op.
+ * Derives a stable source_record_id for a row (see {@link #of}). Re-uploading the same data yields the same id, so the
+ * UNIQUE constraint turns the second insert into a no-op or a versioned update.
  */
 public final class RecordIdentity {
 
     private RecordIdentity() {
     }
 
+    /**
+     * With id columns: their values joined with '/', blanks kept as empty parts (no silent switch to a content hash,
+     * which would give the same row two identities). Returns null when every id cell is blank: the row has no identity.
+     * Without id columns: sha256 of the normalized row.
+     */
     public static String of(ParsedRow row, List<String> idColumns) {
         Map<String, String> cells = row.asMap();
-        if (idColumns != null && !idColumns.isEmpty()) {
-            StringBuilder sb = new StringBuilder();
-            for (String col : idColumns) {
-                String v = cells.getOrDefault(col, "").trim();
-                if (v.isEmpty()) {
-                    return contentHash(cells); // fall back when an id cell is blank
-                }
-                if (!sb.isEmpty()) {
-                    sb.append('/');
-                }
-                sb.append(v);
-            }
-            return sb.toString();
+        if (idColumns == null || idColumns.isEmpty()) {
+            return contentHash(cells);
         }
-        return contentHash(cells);
+        List<String> parts = new java.util.ArrayList<>(idColumns.size());
+        for (String col : idColumns) {
+            String v = cells.get(col);
+            parts.add(v == null ? "" : v.trim());
+        }
+        return parts.stream().allMatch(String::isEmpty) ? null : String.join("/", parts);
     }
 
     public static String contentHash(Map<String, String> cells) {

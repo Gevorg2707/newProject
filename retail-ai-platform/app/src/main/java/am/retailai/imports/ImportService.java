@@ -9,12 +9,16 @@ import tools.jackson.databind.ObjectMapper;
 import org.postgresql.util.PGobject;
 import org.springframework.stereotype.Service;
 
+import org.springframework.jdbc.core.simple.JdbcClient;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.sql.SQLException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -34,41 +38,80 @@ public class ImportService {
         this.json = json;
     }
 
-    public ImportResult upload(TenantId tenant, SourceSystem source, String fileName, byte[] content,
-                               String uploadedBy, List<String> idColumns) {
+    /**
+     * Stores one file. Only the columns named by the spec are kept. Rows without identity or repeating an identity
+     * within the file are rejected here (validation_issues, stage 'import'). A source keeps one identity scheme for life.
+     * The same file again is a duplicate, unless its stored rows were purged or the spec now keeps more columns:
+     * then its rows are stored again into the same batch, so a re-commit sees them.
+     */
+    public ImportResult upload(TenantId tenant, ImportSpec spec, String fileName, byte[] content, String uploadedBy) {
         String sha = RecordIdentity.sha256Hex(content);
         TabularParser parser = parsers.stream().filter(p -> p.supports(fileName)).findFirst()
             .orElseThrow(() -> new UnsupportedFileException(fileName));
+        SourceSystem source = spec.source();
+        List<ParsedRow> rows;
+        try {
+            rows = parser.parse(new ByteArrayInputStream(content));
+        } catch (IOException e) {
+            throw new UncheckedIOException("Cannot parse " + fileName + ": " + e.getMessage(), e);
+        }
 
         return tenantTx.inTenant(tenant, jdbc -> {
-            Optional<UUID> existing = jdbc.sql("""
-                    SELECT id FROM import_batches WHERE tenant_id = :tenant AND file_sha256 = :sha
+            List<String> otherSchemes = jdbc.sql("""
+                    SELECT DISTINCT identity_scheme FROM import_batches
+                    WHERE source_system = :source AND identity_scheme IS NOT NULL AND identity_scheme <> :scheme
+                    """).param("source", source.name()).param("scheme", spec.identityScheme()).query(String.class).list();
+            if (!otherSchemes.isEmpty()) {
+                throw new IllegalStateException("Row identity for " + source + " was " + otherSchemes
+                    + " in earlier imports, now " + spec.identityScheme() + ". Keep the same idColumns in the mapping;"
+                    + " changing them would count the same rows twice. Nothing was imported.");
+            }
+
+            Optional<Map<String, Object>> existing = jdbc.sql("""
+                    SELECT id, status FROM import_batches WHERE tenant_id = :tenant AND file_sha256 = :sha
                     """)
                 .param("tenant", tenant.value()).param("sha", sha)
-                .query(UUID.class).optional();
+                .query().listOfRows().stream().findFirst();
+            UUID batchId;
             if (existing.isPresent()) {
-                return new ImportResult(existing.get(), true, 0, 0, 0, 0);
+                UUID existingId = (UUID) existing.get().get("id");
+                String existingStatus = (String) existing.get().get("status");
+                if (!"purged".equals(existingStatus) && !keepsMoreColumns(jdbc, existingId, rows, spec)) {
+                    return new ImportResult(existingId, true, 0, 0, 0, 0, 0, existingStatus);
+                }
+                jdbc.sql("UPDATE import_batches SET status = 'uploaded', updated_at = now() WHERE id = :id").param("id", existingId).update();
+                jdbc.sql("DELETE FROM validation_issues WHERE import_batch_id = :id AND stage = 'import'").param("id", existingId).update();
+                batchId = existingId;
+            } else {
+                batchId = jdbc.sql("""
+                        INSERT INTO import_batches (tenant_id, source_system, file_name, file_sha256, file_size_bytes, uploaded_by, status, identity_scheme)
+                        VALUES (:tenant, :source, :file, :sha, :size, :by, 'uploaded', :scheme)
+                        RETURNING id
+                        """)
+                    .param("tenant", tenant.value()).param("source", source.name()).param("file", fileName)
+                    .param("sha", sha).param("size", (long) content.length).param("by", uploadedBy)
+                    .param("scheme", spec.identityScheme())
+                    .query(UUID.class).single();
             }
 
-            UUID batchId = jdbc.sql("""
-                    INSERT INTO import_batches (tenant_id, source_system, file_name, file_sha256, file_size_bytes, uploaded_by, status)
-                    VALUES (:tenant, :source, :file, :sha, :size, :by, 'uploaded')
-                    RETURNING id
-                    """)
-                .param("tenant", tenant.value()).param("source", source.name()).param("file", fileName)
-                .param("sha", sha).param("size", (long) content.length).param("by", uploadedBy)
-                .query(UUID.class).single();
-
-            List<ParsedRow> rows;
-            try {
-                rows = parser.parse(new ByteArrayInputStream(content));
-            } catch (IOException e) {
-                throw new UncheckedIOException("Cannot parse " + fileName + ": " + e.getMessage(), e);
-            }
-
-            int inserted = 0, updated = 0;
+            int inserted = 0, updated = 0, rejected = 0;
+            Map<String, Integer> seen = new java.util.HashMap<>();
             for (ParsedRow row : rows) {
-                String recordId = RecordIdentity.of(row, idColumns);
+                String baseId = RecordIdentity.of(row, spec.idColumns());
+                if (baseId == null) {
+                    rejected++;
+                    importIssue(jdbc, tenant, batchId, null, row.rowNumber(), "missing_id", String.join(",", spec.idColumns()),
+                        "All identity columns " + spec.idColumns() + " are empty; the row cannot be tracked and was not imported");
+                    continue;
+                }
+                String recordId = baseId + spec.identitySuffix();
+                Integer firstRow = seen.putIfAbsent(recordId, row.rowNumber());
+                if (firstRow != null) {
+                    rejected++;
+                    importIssue(jdbc, tenant, batchId, recordId, row.rowNumber(), "duplicate_row", String.join(",", spec.idColumns()),
+                        "Same identity as row " + firstRow + " in this file; only the first one was imported");
+                    continue;
+                }
                 // RETURNING (xmax = 0): true = freshly inserted, false = existing row updated; no row = content identical.
                 Optional<Boolean> outcome = jdbc.sql("""
                         INSERT INTO source_records (tenant_id, import_batch_id, source_system, source_record_id, row_number, raw_payload)
@@ -76,12 +119,15 @@ public class ImportService {
                         ON CONFLICT (tenant_id, source_system, source_record_id) DO UPDATE SET
                             raw_payload = EXCLUDED.raw_payload, import_batch_id = EXCLUDED.import_batch_id,
                             row_number = EXCLUDED.row_number, status = 'accepted',
-                            source_version = source_records.source_version + 1, ingested_at = now()
+                            -- restoring a purged row ('{}') or keeping more columns is not a restatement by the source
+                            source_version = source_records.source_version
+                                + CASE WHEN EXCLUDED.raw_payload @> source_records.raw_payload THEN 0 ELSE 1 END,
+                            ingested_at = now()
                         WHERE source_records.raw_payload IS DISTINCT FROM EXCLUDED.raw_payload
                         RETURNING (xmax = 0) AS inserted
                         """)
                     .param("tenant", tenant.value()).param("batch", batchId).param("source", source.name())
-                    .param("rid", recordId).param("rownum", row.rowNumber()).param("payload", jsonb(row))
+                    .param("rid", recordId).param("rownum", row.rowNumber()).param("payload", jsonb(kept(row, spec)))
                     .query(Boolean.class).optional();
                 if (outcome.isPresent()) {
                     if (outcome.get()) inserted++; else updated++;
@@ -95,16 +141,44 @@ public class ImportService {
                     VALUES (:tenant, :actor, 'import.upload', 'import_batch', :id, :details)
                     """)
                 .param("tenant", tenant.value()).param("actor", uploadedBy).param("id", batchId.toString())
-                .param("details", jsonb("{\"file\":" + quote(fileName) + ",\"rows\":" + rows.size() + ",\"inserted\":" + inserted + ",\"updated\":" + updated + "}"))
+                .param("details", jsonb("{\"file\":" + quote(fileName) + ",\"rows\":" + rows.size() + ",\"inserted\":" + inserted
+                    + ",\"updated\":" + updated + ",\"rejected\":" + rejected + "}"))
                 .update();
 
-            return new ImportResult(batchId, false, rows.size(), inserted, updated, rows.size() - inserted - updated);
+            int known = rows.size() - inserted - updated - rejected;
+            return new ImportResult(batchId, false, rows.size(), inserted, updated, known, rejected, "parsed");
         });
     }
 
-    private PGobject jsonb(ParsedRow row) {
+    /** True when the spec would store columns of this file that the batch's stored rows do not have. */
+    private static boolean keepsMoreColumns(JdbcClient jdbc, UUID batchId, List<ParsedRow> rows, ImportSpec spec) {
+        if (rows.isEmpty()) return false;
+        Set<String> stored = new HashSet<>(jdbc.sql("""
+                SELECT DISTINCT jsonb_object_keys(raw_payload) FROM source_records WHERE import_batch_id = :b
+                """).param("b", batchId).query(String.class).list());
+        return !stored.containsAll(kept(rows.getFirst(), spec).keySet());
+    }
+
+    /** Only the spec's columns are stored; everything else in the file (e.g. customer names) is dropped here. */
+    private static Map<String, String> kept(ParsedRow row, ImportSpec spec) {
+        if (spec.keepHeaders() == null) return row.asMap();
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        row.asMap().forEach((k, v) -> { if (spec.keepHeaders().contains(k)) out.put(k, v); });
+        return out;
+    }
+
+    private static void importIssue(JdbcClient jdbc, TenantId tenant, UUID batch,
+                                    String recordId, int row, String code, String field, String message) {
+        jdbc.sql("""
+                INSERT INTO validation_issues (tenant_id, import_batch_id, source_record_id, row_number, severity, code, field, message, stage)
+                VALUES (:t, :b, :r, :row, 'error', :code, :field, :msg, 'import')
+                """).param("t", tenant.value()).param("b", batch).param("r", recordId).param("row", row)
+            .param("code", code).param("field", field).param("msg", message).update();
+    }
+
+    private PGobject jsonb(Map<String, String> cells) {
         try {
-            return jsonb(json.writeValueAsString(row.asMap()));
+            return jsonb(json.writeValueAsString(cells));
         } catch (JacksonException e) {
             throw new IllegalStateException(e);
         }

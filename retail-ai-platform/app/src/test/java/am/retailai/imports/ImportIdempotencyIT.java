@@ -37,10 +37,8 @@ class ImportIdempotencyIT {
     void sameXlsxUploadedTwice_secondUploadIsDuplicateAndInsertsNothing() throws IOException {
         byte[] file = Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx");
 
-        ImportResult first = importService.upload(tenant, SourceSystem.HC_TRADE, "HC_sales.xlsx", file, "tester",
-            List.of("Փաստաթղթի համար", "Ապրանքի կոդ"));
-        ImportResult second = importService.upload(tenant, SourceSystem.HC_TRADE, "HC_sales_copy.xlsx", file, "tester",
-            List.of("Փաստաթղթի համար", "Ապրանքի կոդ"));
+        ImportResult first = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.HC_TRADE, List.of("Փաստաթղթի համար", "Ապրանքի կոդ")), "HC_sales.xlsx", file, "tester");
+        ImportResult second = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.HC_TRADE, List.of("Փաստաթղթի համար", "Ապրանքի կոդ")), "HC_sales_copy.xlsx", file, "tester");
 
         assertThat(first.duplicate()).isFalse();
         assertThat(first.rowsParsed()).isGreaterThan(300);
@@ -59,10 +57,8 @@ class ImportIdempotencyIT {
         byte[] csv = Fixtures.bytes("fixtures/synthetic_meta_campaign_daily.csv");
         byte[] csvWithExtraNewline = (new String(csv) + "\n").getBytes();
 
-        ImportResult first = importService.upload(tenant, SourceSystem.META_ADS, "meta_1.csv", csv, "tester",
-            List.of("Reporting starts", "Campaign name"));
-        ImportResult second = importService.upload(tenant, SourceSystem.META_ADS, "meta_2.csv", csvWithExtraNewline, "tester",
-            List.of("Reporting starts", "Campaign name"));
+        ImportResult first = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.META_ADS, List.of("Reporting starts", "Campaign name")), "meta_1.csv", csv, "tester");
+        ImportResult second = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.META_ADS, List.of("Reporting starts", "Campaign name")), "meta_2.csv", csvWithExtraNewline, "tester");
 
         assertThat(first.rowsInserted()).isEqualTo(4);
         assertThat(second.duplicate()).isFalse();           // different bytes -> new batch
@@ -74,7 +70,7 @@ class ImportIdempotencyIT {
     @Test
     void unsupportedExtension_isRejectedBeforeTouchingTheDatabase() {
         org.junit.jupiter.api.Assertions.assertThrows(UnsupportedFileException.class, () ->
-            importService.upload(tenant, SourceSystem.BANK, "statement.pdf", new byte[]{1, 2, 3}, "tester", List.of()));
+            importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.BANK, List.of()), "statement.pdf", new byte[]{1, 2, 3}, "tester"));
         assertThat(countBatches(tenant)).isZero();
     }
 

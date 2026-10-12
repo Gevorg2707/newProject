@@ -17,9 +17,15 @@ class RecordIdentityTest {
     }
 
     @Test
-    void blankIdCell_fallsBackToContentHash() {
+    void blankIdCell_staysAnEmptyPart_neverSwitchesToContentHash() {
         var row = row("doc", "", "sku", "A-1045");
-        assertThat(RecordIdentity.of(row, List.of("doc"))).isEqualTo(RecordIdentity.contentHash(row.asMap()));
+        assertThat(RecordIdentity.of(row, List.of("doc", "sku"))).isEqualTo("/A-1045");
+    }
+
+    @Test
+    void allIdCellsBlank_meansNoIdentity() {
+        var row = row("doc", " ", "sku", "");
+        assertThat(RecordIdentity.of(row, List.of("doc", "sku"))).isNull();
     }
 
     @Test

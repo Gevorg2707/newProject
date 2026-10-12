@@ -17,7 +17,11 @@
     "currency": "AMD",
     "dateFormat": "yyyy-MM-dd",
     "decimalSeparator": ".",
-    "idColumns": ["Reporting starts", "Campaign name"],
+    "idColumns": [
+      "Reporting starts",
+      "Campaign name",
+      "Ad set name"
+    ],
     "platform": "meta",
     "returnMarkers": null,
     "timezone": "Asia/Yerevan",

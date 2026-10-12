@@ -22,7 +22,7 @@ class PilotCliIT {
     @Autowired PilotCli cli;
 
     @Test
-    void createTenant_importWithJsonMapping_secondRunIsDuplicate() throws Exception {
+    void createTenant_importWithJsonMapping_secondRunRecommitsWithoutDuplicates() throws Exception {
         ByteArrayOutputStream buf = new ByteArrayOutputStream();
         PrintStream out = new PrintStream(buf, true, "UTF-8");
         Path file = Path.of("src/test/resources/fixtures/synthetic_hc_sales.xlsx");
@@ -36,9 +36,11 @@ class PilotCliIT {
         String log = buf.toString("UTF-8");
         assertThat(log).contains("Tenant created: " + tenant);
         assertThat(log).contains("rows parsed").contains("Committed to SALE_LINE");
-        assertThat(log).contains("Duplicate file");
+        assertThat(log).contains("Same file was already imported");
         assertThat(first.rowsCommitted()).isGreaterThan(300);
         assertThat(first.errorCount()).isZero();
-        assertThat(second.rowsRead()).isZero();
+        assertThat(second.rowsCommitted()).isZero();
+        assertThat(second.rowsUpdated()).isZero();
+        assertThat(second.rowsAlreadyPresent()).isEqualTo(first.rowsCommitted());
     }
 }
