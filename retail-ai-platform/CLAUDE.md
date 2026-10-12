@@ -12,8 +12,10 @@
 - Банковский остаток показывать только с источником и временем; устаревший — «последний известный остаток».
 - Деливераблы для основателя: язык основателя (армянский) по запросу из раздела 13; рабочие заметки в vault — на русском, термины на английском.
 
-## Стек (гипотеза, не решение)
-TypeScript UI/API + PostgreSQL + очередь импорта (worker) + secrets store + LLM provider adapter. Без Kubernetes/GPU/микросервисов до доказанной необходимости.
+## Стек (фаза 1, факт)
+Java 25 + Spring Boot 4.1 (JdbcClient, Flyway), PostgreSQL 16 с RLS (`FORCE ROW LEVEL SECURITY`, роль без BYPASSRLS), Apache POI / Commons CSV, Anthropic Java SDK (выключен по умолчанию). Пилот — CLI без UI (`app/`, `docs/PILOT_RUNBOOK.md`). Без Kubernetes/GPU/микросервисов до доказанной необходимости.
+- Тесты: `cd app && mvn test` (нужен локальный PostgreSQL, см. `app/README.md`); приложению нужен `DB_PASSWORD`.
+- Ревью кода и статусы находок: `vault/50-Риски-и-вопросы/Ревью кода 2026-10.md`.
 
 ## Git
-Ветка разработки: `claude/retail-ai-platform-review-w4pl90`. Коммит/пуш — только по явной просьбе основателя.
+Ветка разработки: `claude/retail-ai-platform-review-w4pl90`. Коммиты и пуш в эту ветку разрешены основателем (2026-10); pull request — только по явной просьбе.
