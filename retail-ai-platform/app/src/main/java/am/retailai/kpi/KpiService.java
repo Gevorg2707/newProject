@@ -202,6 +202,18 @@ public class KpiService {
             if (!coveredFrom.equals(from) || !coveredTo.equals(to)) flags.add(KpiFlags.DATA_NOT_COVERING_PERIOD);
             long periodDays = Math.max(1, ChronoUnit.DAYS.between(coveredFrom, coveredTo) + 1);
 
+            boolean rejected = jdbc.sql("SELECT EXISTS (SELECT 1 FROM source_records WHERE status = 'rejected')").query(Boolean.class).single();
+            if (rejected) flags.add(KpiFlags.ROWS_REJECTED);   // R7
+            int salesSources = jdbc.sql("""
+                    SELECT count(DISTINCT source_system) FROM sale_lines WHERE occurred_at >= :from AND occurred_at < :to
+                    """).param("from", periodFrom).param("to", periodTo).query(Integer.class).single();
+            if (salesSources > 1) flags.add(KpiFlags.MULTIPLE_SALES_SOURCES);   // R60
+            if (anyMarketing) {   // R67: ad rows on fewer days than the sales cover
+                int adDays = jdbc.sql("SELECT count(DISTINCT date) FROM campaign_daily WHERE date BETWEEN :f AND :t")
+                    .param("f", coveredFrom).param("t", coveredTo).query(Integer.class).single();
+                if (adDays < ChronoUnit.DAYS.between(coveredFrom, coveredTo) + 1) flags.add(KpiFlags.MARKETING_PARTIAL);
+            }
+
             // A velocity from a SKU's own few selling days is a weak sample even when the shop sells daily (C48).
             Map<String, Integer> skuDays = new java.util.HashMap<>();
             jdbc.sql("""
@@ -235,6 +247,10 @@ public class KpiService {
                 if (a.anyCogs) { cogsTotal = cogsTotal.add(a.cogs); netWithCogs = netWithCogs.add(a.netSalesWithCogs); }
 
                 BigDecimal netUnits = a.unitsSold.subtract(a.unitsReturned);
+                if (netUnits.signum() < 0) {   // R27: returns of earlier sales are not negative demand
+                    a.flags.add(KpiFlags.RETURNS_EXCEED_SALES);
+                    netUnits = BigDecimal.ZERO;
+                }
                 BigDecimal velocity = netUnits.divide(BigDecimal.valueOf(periodDays), CALC_SCALE, RoundingMode.HALF_UP);
                 StockRow stockRow = onHand.get(a.sku);
                 BigDecimal stock = stockRow != null ? stockRow.qty() : anySnapshot ? BigDecimal.ZERO : null;

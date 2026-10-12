@@ -58,6 +58,22 @@ class RecommendationServiceIT {
                 INSERT INTO inventory_snapshots (tenant_id, import_batch_id, source_system, source_record_id, as_of_date, product_id, sku_code, warehouse, quantity)
                 VALUES (:t, :b, 'HC_TRADE', 'inv1', '2026-09-30', :p, 'B-1', 'Main', 20)
                 """).param("t", tenant.value()).param("b", batch).param("p", p).update());
+        // B-2 sells the same and has 60 days of stock: the ad-test candidate (B-1 is about to run out, R13)
+        UUID p2 = tenantTx.inTenant(tenant, j -> j.sql("INSERT INTO products (tenant_id, sku_code, name) VALUES (:t, 'B-2', 'Shirt L') RETURNING id")
+            .param("t", tenant.value()).query(UUID.class).single());
+        for (int d = 1; d <= 30; d++) {
+            int day = d;
+            tenantTx.inTenant(tenant, j -> j.sql("""
+                    INSERT INTO sale_lines (tenant_id, import_batch_id, source_system, source_record_id, occurred_at, operation_type,
+                        product_id, sku_code, quantity, gross_amount, discount_amount, cogs_amount, currency, vat_included)
+                    VALUES (:t, :b, 'HC_TRADE', :rid, :at, 'SALE', :p, 'B-2', 2, 70000, 0, 44000, 'AMD', false)
+                    """).param("t", tenant.value()).param("b", batch).param("rid", "L" + day)
+                .param("at", LocalDate.of(2026, 9, day).atTime(12, 0).atOffset(ZoneOffset.ofHours(4))).param("p", p2).update());
+        }
+        tenantTx.inTenant(tenant, j -> j.sql("""
+                INSERT INTO inventory_snapshots (tenant_id, import_batch_id, source_system, source_record_id, as_of_date, product_id, sku_code, warehouse, quantity)
+                VALUES (:t, :b, 'HC_TRADE', 'inv2', '2026-09-30', :p, 'B-2', 'Main', 120)
+                """).param("t", tenant.value()).param("b", batch).param("p", p2).update());
     }
 
     @Test
@@ -101,6 +117,9 @@ class RecommendationServiceIT {
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("not found");
         assertThat(text("SELECT coalesce(decision, 'none') FROM recommendations WHERE id = '" + id + "'")).isEqualTo("none");
+        int denied = tenantTx.inTenant(other, j -> j.sql("SELECT count(*) FROM audit_events WHERE action = 'recommendation.decide.denied'")
+            .query(Integer.class).single());
+        assertThat(denied).isEqualTo(1);   // R12
     }
 
     @Test

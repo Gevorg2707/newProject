@@ -78,7 +78,7 @@ public class WeeklyReportService {
     }
 
     public byte[] generate(TenantId tenant, LocalDate from, LocalDate to, KpiSettings settings) {
-        ReconciliationReport recon = reconciliation.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+        ReconciliationReport recon = reconciliation.reconcile(tenant, from, to, ReconciliationSettings.defaults().withVatRate(settings.vatRate()));
         KpiReport kpi = kpiService.compute(tenant, from, to, settings);
         List<StoredRecommendation> advice = recommendations.generate(tenant, from, to, settings);
         CashPosition cash = cashPositions.asOf(tenant, to);
@@ -88,6 +88,10 @@ public class WeeklyReportService {
                 SELECT vi.severity, vi.code, vi.field, count(*) AS cnt, min(vi.message) AS example, ib.source_system
                 FROM validation_issues vi JOIN import_batches ib ON ib.id = vi.import_batch_id
                 WHERE ib.ingested_at >= :from
+                  -- R17: an issue whose row was imported again later (fixed or not) belongs to the newer batch
+                  AND (vi.source_record_id IS NULL OR EXISTS (SELECT 1 FROM source_records sr
+                       WHERE sr.source_system = ib.source_system AND sr.source_record_id = vi.source_record_id
+                         AND sr.import_batch_id = vi.import_batch_id))
                 GROUP BY vi.severity, vi.code, vi.field, ib.source_system
                 ORDER BY vi.severity, cnt DESC
                 """).param("from", from.minusDays(30).atStartOfDay(java.time.ZoneId.of("Asia/Yerevan")).toOffsetDateTime())
@@ -264,7 +268,8 @@ public class WeeklyReportService {
         money(s, st, row++, "Ներքին փոխանցումների գումար", r.internalTransferAmount(), "");
         number(s, st, row++, "Էքվայրինգ՝ համադրված / հավանական / չհամադրված",
             r.settlementsMatched() + " / " + r.settlementsPlausible() + " / " + r.settlementsUnmatched(), "");
-        number(s, st, row++, "Քարտային վաճառքի օրեր առանց մուտքի", String.valueOf(r.salesDaysWithoutSettlement()), "Ստուգել բանկի հետ կամ քաղվածքի ամբողջականությունը");
+        number(s, st, row++, "Քարտային վաճառքի օրեր առանց մուտքի",
+            "CARD_SALES".equals(r.method()) ? String.valueOf(r.salesDaysWithoutSettlement()) : "— (չի ստուգվել. վճարման եղանակ չկա)", "Ստուգել բանկի հետ կամ քաղվածքի ամբողջականությունը");
         pct(s, st, row++, "Միջին հաշվարկային միջնորդավճար", r.averageImpliedFeeRate(), "Վաճառք − մուտք, հաշվարկային, ոչ բանկի սակագին");
         row++;
         header(s, st, row++, "Տեսակ", "Կարգավիճակ", "Բանկի օր", "Վաճառքի օր", "Վաճառք", "Մուտք/ելք", "Տարբերություն", "Ուշացում (օր)", "Նշում");

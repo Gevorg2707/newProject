@@ -30,7 +30,11 @@ final class ReportLabels {
         Map.entry(KpiFlags.MIXED_CURRENCY, "Այլ արժույթով տողերը կամ գովազդի ծախսը չեն ներառվել ընդհանուր գումարներում"),
         Map.entry(KpiFlags.RETURN_COST_ESTIMATED, "Առանց ինքնարժեքի վերադարձները գնահատվել են ապրանքի միջին ինքնարժեքով (ենթադրություն)"),
         Map.entry(KpiFlags.SKU_MAPPING_UNCLEAR, "Ապրանքը կա միայն վաճառքում կամ միայն մնացորդում. հնարավոր է՝ կոդը փոխվել է"),
-        Map.entry(KpiFlags.DATA_NOT_COVERING_PERIOD, "Վաճառքի տվյալները չեն ծածկում ամբողջ շրջանը. արագությունը հաշվված է միայն ծածկված օրերով")
+        Map.entry(KpiFlags.DATA_NOT_COVERING_PERIOD, "Վաճառքի տվյալները չեն ծածկում ամբողջ շրջանը. արագությունը հաշվված է միայն ծածկված օրերով"),
+        Map.entry(KpiFlags.ROWS_REJECTED, "Որոշ տողեր մերժվել են ներմուծման ժամանակ (տե՛ս «Տվյալների որակ»). թվերը մասնակի տվյալներով են"),
+        Map.entry(KpiFlags.RETURNS_EXCEED_SALES, "Որոշ ապրանքների վերադարձը գերազանցում է վաճառքը. դրանց արագությունը համարվել է 0"),
+        Map.entry(KpiFlags.MULTIPLE_SALES_SOURCES, "Վաճառքը եկել է մեկից ավելի աղբյուրից. նույն վաճառքը կարող է երկու անգամ հաշվված լինել"),
+        Map.entry(KpiFlags.MARKETING_PARTIAL, "Գովազդի տվյալները ծածկում են ավելի քիչ օրեր, քան վաճառքը. ծախսը և ծածկույթը կարող են թերի լինել")
     );
 
     static final Map<String, String> ISSUE_CODES = Map.ofEntries(

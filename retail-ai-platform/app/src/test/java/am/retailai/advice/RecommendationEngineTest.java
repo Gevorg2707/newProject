@@ -188,6 +188,26 @@ class RecommendationEngineTest {
             .containsExactly("E-1", "D-1", "C-1");
     }
 
+    @Test
+    void skuAboutToRunOut_getsARestock_butNoAdTest() {
+        // R13: "restock soon" and "advertise it" for the same SKU in one run
+        var sku = sku("A-1", "60", "0", "2100000", "1320000", "10", "2.000", "5.0", false, Set.of());
+        var recs = engine.recommend(report(List.of(sku), Set.of()), costs2000, to, to, RecommendationSettings.defaults());
+
+        assertThat(recs).anyMatch(r -> r.type() == RecommendationType.RESTOCK);
+        assertThat(recs).noneMatch(r -> r.type() == RecommendationType.AD_TEST);
+    }
+
+    @Test
+    void rejectedRowsOrSeveralSalesSources_capConfidence() {
+        var sku = sku("B-1", "10", "0", "350000", "220000", "126", "0.333", "378.4", true, Set.of());
+        var recs = engine.recommend(report(List.of(sku), Set.of(KpiFlags.ROWS_REJECTED, KpiFlags.MULTIPLE_SALES_SOURCES)), costs2000, to, to,
+            RecommendationSettings.defaults());
+
+        assertThat(find(recs, RecommendationType.AD_TEST).confidence()).isNotEqualTo(Confidence.HIGH);
+        assertThat(find(recs, RecommendationType.AD_TEST).missing()).contains("rejected_rows", "single_sales_source");
+    }
+
     // ---- builders ----
     private SkuKpi sku(String code, String sold, String returned, String net, String cogs, String onHand, String velocity,
                        String days, boolean slow, Set<KpiFlags> flags) {

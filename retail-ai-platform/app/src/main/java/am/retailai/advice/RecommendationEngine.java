@@ -58,8 +58,10 @@ public class RecommendationEngine {
             }
 
             // Unit cost must cover every unit: with partial COGS it is understated and the acquisition limit too high.
+            // A SKU about to run out gets a restock, not an ad test (R13).
+            boolean runningOut = x.daysOfStock() != null && x.daysOfStock().compareTo(BigDecimal.valueOf(s.restockBelowDays())) < 0;
             if (x.cogs() != null && !x.flags().contains(KpiFlags.COGS_MISSING) && netUnits.signum() > 0
-                && x.onHand() != null && x.onHand().signum() > 0) {
+                && x.onHand() != null && x.onHand().signum() > 0 && !runningOut) {
                 BigDecimal netPrice = x.netSales().divide(netUnits, 2, RoundingMode.HALF_UP);
                 BigDecimal cogsUnit = x.cogs().divide(netUnits, 2, RoundingMode.HALF_UP);
                 BigDecimal margin = netPrice.subtract(cogsUnit).subtract(costs.variableCostPerUnit());
@@ -113,6 +115,18 @@ public class RecommendationEngine {
         List<String> miss = new ArrayList<>(missing);
 
         if (flags.contains(KpiFlags.LOW_VELOCITY_SAMPLE)) c = Confidence.MEDIUM;
+        if (k.flags().contains(KpiFlags.ROWS_REJECTED)) {
+            if (c == Confidence.HIGH) c = Confidence.MEDIUM;
+            miss.add("rejected_rows");
+        }
+        if (k.flags().contains(KpiFlags.MULTIPLE_SALES_SOURCES)) {
+            if (c == Confidence.HIGH) c = Confidence.MEDIUM;
+            miss.add("single_sales_source");
+        }
+        if (flags.contains(KpiFlags.RETURNS_EXCEED_SALES)) {
+            if (c == Confidence.HIGH) c = Confidence.MEDIUM;
+            miss.add("returns_check");
+        }
         if (flags.contains(KpiFlags.SKU_MAPPING_UNCLEAR)) {
             if (c == Confidence.HIGH) c = Confidence.MEDIUM;
             miss.add("sku_mapping_check");

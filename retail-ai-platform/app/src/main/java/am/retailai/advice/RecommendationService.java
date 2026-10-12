@@ -91,6 +91,20 @@ public class RecommendationService {
 
     /** Records a human decision. Unknown id or another tenant's id (hidden by RLS) → IllegalArgumentException. */
     public void decide(TenantId tenant, UUID recommendationId, Decision decision, String decidedBy, String comment) {
+        try {
+            record(tenant, recommendationId, decision, decidedBy, comment);
+        } catch (IllegalArgumentException e) {
+            // R12: a refused attempt (e.g. another client's id) is audited in the caller's tenant, then refused
+            tenantTx.inTenant(tenant, j -> j.sql("""
+                    INSERT INTO audit_events (tenant_id, actor, action, entity_type, entity_id, details)
+                    VALUES (:t, :by, 'recommendation.decide.denied', 'recommendation', :id, jsonb_build_object('decision', :d))
+                    """).param("t", tenant.value()).param("by", decidedBy).param("id", recommendationId.toString())
+                .param("d", decision.name()).update());
+            throw e;
+        }
+    }
+
+    private void record(TenantId tenant, UUID recommendationId, Decision decision, String decidedBy, String comment) {
         tenantTx.inTenant(tenant, j -> {
             int updated = j.sql("""
                     UPDATE recommendations SET decision = :d, decided_by = :by, decided_at = now() WHERE id = :id

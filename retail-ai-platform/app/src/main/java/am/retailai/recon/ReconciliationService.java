@@ -120,7 +120,7 @@ public class ReconciliationService {
             boolean hasPaymentMethod = classes.getOrDefault(PaymentClass.UNKNOWN, 0) == 0
                 && classes.values().stream().mapToInt(Integer::intValue).sum() > 0;
             String method = hasPaymentMethod ? "CARD_SALES" : "TOTAL_SALES_PROXY";
-            TreeMap<LocalDate, BigDecimal> salesByDay = dailySales(jdbc, from.minusDays(3), to, hasPaymentMethod, s.cardPaymentMarkers());
+            TreeMap<LocalDate, BigDecimal> salesByDay = dailySales(jdbc, from.minusDays(3), to, hasPaymentMethod, s.cardPaymentMarkers(), s.vatRate());
             Set<LocalDate> claimedDays = new HashSet<>();
             int matched = 0, plausible = 0, unmatched = 0;
             BigDecimal feeDiffSum = BigDecimal.ZERO, feeSalesSum = BigDecimal.ZERO;
@@ -218,16 +218,20 @@ public class ReconciliationService {
             .list();
     }
 
-    /** Money actually paid per local day: (gross − discount) of sales minus returns; VAT-inclusive as charged. */
+    /**
+     * Money actually paid per local day: (gross − discount) of sales minus returns, as the customer paid it: lines stored
+     * without VAT (vat_included = false) get the VAT added back (R44).
+     */
     private static TreeMap<LocalDate, BigDecimal> dailySales(JdbcClient jdbc, LocalDate from, LocalDate to, boolean cardOnly,
-                                                             List<String> cardMarkers) {
+                                                             List<String> cardMarkers, BigDecimal vatRate) {
         TreeMap<LocalDate, BigDecimal> out = new TreeMap<>();
         jdbc.sql("""
                 SELECT (occurred_at AT TIME ZONE 'Asia/Yerevan')::date AS d, payment_method,
-                       sum(CASE WHEN operation_type = 'RETURN' THEN -(gross_amount - discount_amount) ELSE gross_amount - discount_amount END) AS paid
+                       sum((CASE WHEN operation_type = 'RETURN' THEN -(gross_amount - discount_amount) ELSE gross_amount - discount_amount END)
+                           * CASE WHEN vat_included = false THEN 1 + :vat ELSE 1 END) AS paid
                 FROM sale_lines WHERE occurred_at >= :f AND occurred_at < :t
                 GROUP BY 1, 2
-                """).param("f", start(from)).param("t", start(to.plusDays(1))).query().listOfRows()
+                """).param("f", start(from)).param("t", start(to.plusDays(1))).param("vat", vatRate).query().listOfRows()
             .forEach(r -> {
                 String pm = (String) r.get("payment_method");
                 if (cardOnly && classify(pm, cardMarkers) != PaymentClass.CARD) return;

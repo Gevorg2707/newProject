@@ -226,6 +226,19 @@ class ReconciliationServiceIT {
     }
 
     @Test
+    void salesStoredWithoutVat_areComparedAsTheCustomerPaidThem() {
+        // R44: 100,000 ex-VAT was paid as 120,000; a 118,800 settlement is a 1% fee, not "more than was sold"
+        sale("S1", "2026-09-10", "SALE", "100000", "0", "Card");
+        tenantTx.inTenant(tenant, j -> j.sql("UPDATE sale_lines SET vat_included = false").update());
+        bank("Ameria main", "A1", "2026-09-11", "118800", "POS", "acquiring");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults().withVatRate(new BigDecimal("0.20")));
+
+        assertThat(r.settlementsMatched()).isEqualTo(1);
+        assertThat(r.averageImpliedFeeRate()).isEqualByComparingTo("0.01000");
+    }
+
+    @Test
     void rerunForSamePeriod_replacesResults_doesNotDuplicate() {
         bank("Ameria main", "T1", "2026-09-02", "-300000", "Transfer");
         bank("Inecobank reserve", "T2", "2026-09-02", "300000", "Transfer");

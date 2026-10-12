@@ -72,6 +72,7 @@ class WeeklyReportServiceIT {
             assertThat(wb.getSheetName(5)).isEqualTo("Առաջարկներ");
             assertThat(textColumnContains(wb.getSheetAt(5), 5, "Վստահություն")).isTrue();   // template explanation present
             assertThat(textColumnContains(wb.getSheetAt(4), 1, "Վճարման եղանակ չկա")).isTrue(); // synthetic HC file has no payment method
+            assertThat(textColumnContains(wb.getSheetAt(4), 1, "չի ստուգվել")).isTrue();       // R58: no "0" for a check never made
 
             Sheet summary = wb.getSheetAt(0);
             assertThat(summary.getRow(0).getCell(0).getStringCellValue()).contains("Report Shop");
@@ -125,6 +126,27 @@ class WeeklyReportServiceIT {
             assertThat(textColumnContains(summary, 2, "հին է, թարմացնել քաղվածքը")).isTrue();   // C81: 28 days before period end
             assertThat(textColumnContains(summary, 2, "ameria_2026-09.sta")).isTrue();
             assertThat(numericByLabel(summary, "acct ***0000 (AMD)")).isEqualTo(2148000.0);
+        }
+    }
+
+    @Test
+    void rowFixedByALaterImport_isNoLongerListedAsAnError() throws IOException {
+        // R17: the old batch's error stayed in the data-quality sheet forever
+        TenantId tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('Fixed Row Shop') RETURNING id").query(UUID.class).single());
+        var settings = new MappingSettings(false, "AMD", "dd.MM.yyyy", ".", List.of("Doc", "SKU"), null, List.of("RETURN"), "Asia/Yerevan", null, null);
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.SALE_LINE, "sales",
+            Map.of("document_number", "Doc", "occurred_at", "Date", "operation_type", "Op", "sku_code", "SKU", "quantity", "Qty",
+                "gross_amount", "Gross"), settings));
+        for (String gross : List.of("7O000", "70000")) {   // letter O first, then the corrected digit 0
+            ImportResult up = importService.upload(tenant, am.retailai.imports.ImportSpec.forMapping(m), "s_" + gross + ".csv",
+                ("Doc,Date,Op,SKU,Qty,Gross\nH-1,10.09.2026,SALE,A,2," + gross + "\n").getBytes(), "t");
+            commitService.commit(tenant, up.batchId(), m);
+        }
+
+        byte[] xlsx = reports.generate(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());
+
+        try (Workbook wb = new XSSFWorkbook(new ByteArrayInputStream(xlsx))) {
+            assertThat(textColumnContains(wb.getSheetAt(2), 2, "bad_number")).isFalse();
         }
     }
 

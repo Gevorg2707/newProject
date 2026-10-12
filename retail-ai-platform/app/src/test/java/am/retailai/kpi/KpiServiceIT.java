@@ -361,6 +361,44 @@ class KpiServiceIT {
         assertThat(sku(r, "B-2001").slowMover()).isTrue();
     }
 
+    @Test
+    void rejectedRows_returnsAboveSales_secondSalesSource_andPartialAds_areFlagged() {
+        // R7, R27, R60, R67
+        UUID a = product("A-1045", "Shirt");
+        for (int d = 1; d <= 30; d++) sale("Հ-" + d, "2026-09-%02d".formatted(d), "SALE", a, "A-1045", "1", "36000", "0", "22000", false);
+        UUID b = product("B-2001", "Jeans");
+        sale("Հ-B", "2026-09-05", "SALE", b, "B-2001", "1", "48000", "0", "29000", false);
+        sale("Վ-B", "2026-09-06", "RETURN", b, "B-2001", "3", "144000", "0", "87000", false);
+        snapshot(b, "B-2001", "Main", "2026-09-30", "10");
+        ad("2026-09-01", "1000");
+        tenantTx.inTenant(tenant, j -> {
+            j.sql("UPDATE sale_lines SET source_system = 'HC_ACCOUNTANT' WHERE document_number = 'Հ-30'").update();
+            return j.sql("""
+                    INSERT INTO source_records (tenant_id, import_batch_id, source_system, source_record_id, row_number, raw_payload, status)
+                    VALUES (:t, :b, 'HC_TRADE', 'bad/1', 7, '{}'::jsonb, 'rejected')
+                    """).param("t", tenant.value()).param("b", batch).update();
+        });
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(r.flags()).contains(KpiFlags.ROWS_REJECTED, KpiFlags.MULTIPLE_SALES_SOURCES, KpiFlags.MARKETING_PARTIAL);
+        SkuKpi jeans = sku(r, "B-2001");
+        assertThat(jeans.dailyVelocity()).isEqualByComparingTo("0");
+        assertThat(jeans.flags()).contains(KpiFlags.RETURNS_EXCEED_SALES);
+    }
+
+    @Test
+    void noSnapshotAtAll_isFlagged() {
+        // R30: NO_INVENTORY_SNAPSHOT was only ever asserted absent
+        UUID a = product("A-1045", "Shirt");
+        sale("Հ-1", "2026-09-10", "SALE", a, "A-1045", "1", "36000", "0", "22000", false);
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(r.flags()).contains(KpiFlags.NO_INVENTORY_SNAPSHOT);
+        assertThat(sku(r, "A-1045").flags()).contains(KpiFlags.NO_INVENTORY_SNAPSHOT, KpiFlags.LOW_VELOCITY_SAMPLE);
+    }
+
     private static SkuKpi sku(KpiReport r, String code) {
         return r.skus().stream().filter(x -> x.skuCode().equals(code)).findFirst().orElseThrow();
     }

@@ -15,5 +15,9 @@ public enum KpiFlags {
     MIXED_CURRENCY,           // lines or ad spend in another currency were left out of the totals
     RETURN_COST_ESTIMATED,    // a return without cost was costed at the SKU's average sale cost in the period (assumption)
     SKU_MAPPING_UNCLEAR,      // the product appears only in sales or only in stock: possibly a renamed code (merge with --product.merge)
-    DATA_NOT_COVERING_PERIOD  // imported sales start after the period start or end before its end (or today): velocity uses covered days
+    DATA_NOT_COVERING_PERIOD, // imported sales start after the period start or end before its end (or today): velocity uses covered days
+    ROWS_REJECTED,            // some imported rows are rejected (errors): figures are built on partial data
+    RETURNS_EXCEED_SALES,     // a SKU has more units returned than sold in the period: its velocity is taken as 0
+    MULTIPLE_SALES_SOURCES,   // sale lines come from more than one source system: the same sales may be counted twice
+    MARKETING_PARTIAL         // ad data covers fewer days than the sales data: ad spend and contribution may be incomplete
 }
