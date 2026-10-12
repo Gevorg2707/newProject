@@ -54,14 +54,17 @@ public class WeeklyReportService {
     private final CashPositionService cashPositions;
     private final TenantTransactions tenantTx;
 
+    private final java.time.Clock clock;
+
     public WeeklyReportService(KpiService kpiService, ReconciliationService reconciliation,
                                RecommendationService recommendations, CashPositionService cashPositions,
-                               TenantTransactions tenantTx) {
+                               TenantTransactions tenantTx, java.time.Clock clock) {
         this.kpiService = kpiService;
         this.reconciliation = reconciliation;
         this.recommendations = recommendations;
         this.cashPositions = cashPositions;
         this.tenantTx = tenantTx;
+        this.clock = clock;
     }
 
     /**
@@ -113,7 +116,7 @@ public class WeeklyReportService {
         int r = 0;
         title(s, st, r++, "Շաբաթական հաշվետվություն. " + tenantName);
         text(s, st, r++, "Շրջան", k.from().format(D) + " – " + k.to().format(D) + "  (" + k.formulaVersion() + ", արժույթ՝ " + k.currency() + ")");
-        text(s, st, r++, "Պատրաստված", OffsetDateTime.now().format(DT));
+        text(s, st, r++, "Պատրաստված", OffsetDateTime.now(clock).format(DT));   // Yerevan time, not the server's
         r++;
         header(s, st, r++, "Ցուցանիշ", "Արժեք", "Բանաձև / նշում");
         money(s, st, r++, "Համախառն վաճառք (gross sales)", k.grossSales(), "Վաճառքի տողերի գումար, զեղչից առաջ");

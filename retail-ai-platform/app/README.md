@@ -16,7 +16,8 @@ sudo -u postgres psql -c "CREATE DATABASE retail_test OWNER retail_app;"
 
 mvn test            # unit + *IT (Flyway migrates retail_test on context start)
 ```
-Override with `DB_URL`, `DB_USER`, `DB_PASSWORD`.
+Tests (profile `test`) fall back to the local test password above. The application itself has no default:
+set `DB_PASSWORD` (and `DB_URL`, `DB_USER` if needed); use a real secret for any database with client data.
 
 ## Tenant isolation
 Every tenant-scoped table has `tenant_id` and an RLS policy reading `current_setting('app.tenant_id', true)`.

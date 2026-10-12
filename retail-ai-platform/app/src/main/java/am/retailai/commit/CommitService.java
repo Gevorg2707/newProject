@@ -52,7 +52,7 @@ public class CommitService {
             String sourceSystem = jdbc.sql("SELECT source_system FROM import_batches WHERE id = :id")
                 .param("id", batchId).query(String.class).single();
 
-            List<ValidationIssue> issues = new ArrayList<>();
+            List<ValidationIssue> issues = new ArrayList<>(missingMappedColumns(jdbc, batchId, mapping));
             int committed = 0, updated = 0, rejected = 0, present = 0;
             Map<String, UUID> productCache = new HashMap<>();
 
@@ -99,6 +99,20 @@ public class CommitService {
                     """).param("id", batchId).update();
             return report;
         });
+    }
+
+    /** A mapped header that is in no stored row of the batch is absent from the file: say so once, not silently null. */
+    private static List<ValidationIssue> missingMappedColumns(JdbcClient jdbc, UUID batchId, ColumnMapping mapping) {
+        java.util.Set<String> present = new java.util.HashSet<>(jdbc.sql("""
+                SELECT DISTINCT jsonb_object_keys(raw_payload) FROM source_records WHERE import_batch_id = :b
+                """).param("b", batchId).query(String.class).list());
+        if (present.isEmpty()) return List.of();
+        return mapping.fieldToHeader().entrySet().stream()
+            .filter(e -> e.getValue() != null && !present.contains(e.getValue()))
+            .sorted(Map.Entry.comparingByKey())
+            .map(e -> ValidationIssue.warning(null, 0, "mapped_column_missing", e.getKey(),
+                "Column '" + e.getValue() + "' (mapped to " + e.getKey() + ") is not in this file; the field is empty on every row"))
+            .toList();
     }
 
     /**

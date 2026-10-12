@@ -50,6 +50,7 @@ public class CsvTabularParser implements TabularParser {
             .setIgnoreEmptyLines(true)
             .get();
         List<ParsedRow> rows = new ArrayList<>();
+        int[] lineStarts = lineStarts(text);
         try (CSVParser parser = CSVParser.parse(new StringReader(text), format)) {
             Iterator<CSVRecord> it = parser.iterator();
             if (!it.hasNext()) return rows;
@@ -70,12 +71,27 @@ public class CsvTabularParser implements TabularParser {
                     ? "Row has " + rec.size() + " fields but the header has " + headers.size()
                         + ": an unquoted delimiter inside a value probably shifted the columns"
                     : null;
-                rows.add(new ParsedRow((int) rec.getRecordNumber() + lineOffset, cells, problem));
+                int start = (int) rec.getCharacterPosition();   // may point at skipped empty lines before the record
+                while (start < text.length() && (text.charAt(start) == '\n' || text.charAt(start) == '\r')) start++;
+                rows.add(new ParsedRow(lineOf(lineStarts, start) + lineOffset, cells, problem));
             }
         } catch (IllegalStateException | java.io.UncheckedIOException e) {
             throw new IOException("Cannot read the CSV: " + e.getMessage(), e);
         }
         return rows;
+    }
+
+    /** Character offsets where each physical line starts, so a record's row number is the line it starts on in the file. */
+    private static int[] lineStarts(String text) {
+        List<Integer> starts = new ArrayList<>();
+        starts.add(0);
+        for (int i = 0; i < text.length(); i++) if (text.charAt(i) == '\n') starts.add(i + 1);
+        return starts.stream().mapToInt(Integer::intValue).toArray();
+    }
+
+    private static int lineOf(int[] lineStarts, long position) {
+        int i = java.util.Arrays.binarySearch(lineStarts, (int) position);
+        return (i >= 0 ? i : -i - 2) + 1;
     }
 
     /** Most frequent candidate outside quotes; ',' when none occurs. */

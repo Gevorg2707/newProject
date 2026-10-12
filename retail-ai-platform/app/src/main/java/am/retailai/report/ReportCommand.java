@@ -33,15 +33,23 @@ public class ReportCommand implements ApplicationRunner {
         LocalDate from = LocalDate.parse(required(args, "from"));
         LocalDate to = LocalDate.parse(required(args, "to"));
         Path out = Path.of(args.containsOption("out") ? args.getOptionValues("out").getFirst() : "report-" + from + "_" + to + ".xlsx");
+        KpiSettings settings = settings(args);
+
+        Files.write(out, reports.generate(tenant, from, to, settings));
+        System.out.println("Report written: " + out.toAbsolutePath() + " (VAT rate " + settings.vatRate().toPlainString() + ")");
+    }
+
+    static KpiSettings settings(ApplicationArguments args) {
         KpiSettings d = KpiSettings.defaults();
-        KpiSettings settings = new KpiSettings(
-            new BigDecimal(opt(args, "vat-rate", d.vatRate().toPlainString())),
+        BigDecimal vat = new BigDecimal(opt(args, "vat-rate", d.vatRate().toPlainString()));
+        if (vat.signum() < 0 || vat.compareTo(BigDecimal.ONE) >= 0) {
+            throw new IllegalArgumentException("--vat-rate is a fraction: 0.20 for 20%, 0 for a non-payer (got " + vat + ")");
+        }
+        return new KpiSettings(
+            vat,
             new BigDecimal(opt(args, "variable-cost", d.variableCostPerOrder().toPlainString())),
             Boolean.parseBoolean(opt(args, "formulas-confirmed", "false")),
             Integer.parseInt(opt(args, "slow-mover-days", String.valueOf(d.slowMoverDays()))));
-
-        Files.write(out, reports.generate(tenant, from, to, settings));
-        System.out.println("Report written: " + out.toAbsolutePath());
     }
 
     private static String required(ApplicationArguments a, String name) {

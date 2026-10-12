@@ -113,6 +113,35 @@ class ParsersTest {
     }
 
     @Test
+    void csv_rowNumbers_areTheLinesOfTheFile_afterBlankLinesAndMultiLineCells() throws IOException {
+        // C74
+        List<ParsedRow> rows = csv("a,b\n1,2\n\n3,\"x\ny\"\n5,6\n");
+        assertThat(rows).extracting(ParsedRow::rowNumber).containsExactly(2, 4, 6);
+    }
+
+    @Test
+    void xlsx_mergedCells_giveTheirValueToEveryRowOfTheRange() throws IOException {
+        // C77: a document number merged over its lines
+        Map<String, String> second = xlsxRows(sheet -> {
+            for (int i = 1; i <= 3; i++) {
+                Row r = sheet.createRow(i);
+                if (i == 1) r.createCell(7).setCellValue("H-1");
+                r.createCell(0).setCellValue(i);
+            }
+            sheet.addMergedRegion(new org.apache.poi.ss.util.CellRangeAddress(1, 3, 7, 7));
+        }).get(1);
+        assertThat(second).containsEntry("Text", "H-1").containsEntry("Barcode", "2");
+    }
+
+    @Test
+    void xlsx_tooLarge_isRefusedWithAClearMessage() {
+        // C43
+        byte[] big = new byte[XlsxTabularParser.MAX_FILE_BYTES + 1];
+        assertThatThrownBy(() -> new XlsxTabularParser().parse(new ByteArrayInputStream(big)))
+            .isInstanceOf(IOException.class).hasMessageContaining("MB");
+    }
+
+    @Test
     void supports_byExtension_caseInsensitive() {
         assertThat(new XlsxTabularParser().supports("Report.XLSX")).isTrue();
         assertThat(new CsvTabularParser().supports("data.Csv")).isTrue();
@@ -124,6 +153,10 @@ class ParsersTest {
     }
 
     private static Map<String, String> xlsxRow(java.util.function.Consumer<Sheet> fill) throws IOException {
+        return xlsxRows(fill).getFirst();
+    }
+
+    private static List<Map<String, String>> xlsxRows(java.util.function.Consumer<Sheet> fill) throws IOException {
         try (var wb = new XSSFWorkbook(); var out = new ByteArrayOutputStream()) {
             Sheet sheet = wb.createSheet("s");
             Row h = sheet.createRow(0);
@@ -131,7 +164,7 @@ class ParsersTest {
             for (int i = 0; i < names.length; i++) h.createCell(i, CellType.STRING).setCellValue(names[i]);
             fill.accept(sheet);
             wb.write(out);
-            return new XlsxTabularParser().parse(new ByteArrayInputStream(out.toByteArray())).getFirst().asMap();
+            return new XlsxTabularParser().parse(new ByteArrayInputStream(out.toByteArray())).stream().map(ParsedRow::asMap).toList();
         }
     }
 

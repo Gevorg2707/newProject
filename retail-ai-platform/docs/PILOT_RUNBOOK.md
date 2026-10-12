@@ -3,6 +3,7 @@
 Full cycle for one pilot client, from files to the weekly report. Commands run from `app/` after `mvn package`.
 
 ```bash
+export DB_PASSWORD='<the retail_app password>'   # required: there is no default password
 J="java -jar target/retail-ai-platform-0.1.0-SNAPSHOT.jar --spring.main.banner-mode=off --logging.level.root=WARN"
 
 # 1. Once per client
@@ -20,6 +21,7 @@ $J --import.run=true --tenant=<id> --file=ameria_2026-09.sta                --ma
 
 # 3. Weekly report
 $J --report.run=true --tenant=<id> --from=2026-09-01 --to=2026-09-30 --out=report.xlsx [--variable-cost=2000 --formulas-confirmed=true]
+#    --vat-rate is a fraction (0.20 = 20%, 0 for a non-payer); the default is 0.20
 
 # 4. Retention: empty the stored original rows older than N days (typed data and the report stay)
 $J --purge-raw=30 --tenant=<id>

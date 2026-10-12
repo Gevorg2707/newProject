@@ -71,6 +71,8 @@ class ValueConvertersTest {
         assertThat(d.toString()).startsWith("2026-09-14T15:32+04:00");
         assertThat(ValueConverters.date("2026-09-14", dot)).contains(java.time.LocalDate.of(2026, 9, 14));
         assertThat(ValueConverters.dateTime("14/09/2026", dot)).isEmpty();
+        assertThat(ValueConverters.dateTime("31.02.2026", dot)).isEmpty();   // C75: not clamped to 28.02
+        assertThat(ValueConverters.dateTime("29.02.2028", dot)).isPresent();
         assertThat(ValueConverters.dateTime("2026-09-14T15:32:00", dot).orElseThrow().toString()).startsWith("2026-09-14T15:32+04:00");
         assertThat(ValueConverters.date("46266", dot)).contains(java.time.LocalDate.of(2026, 9, 1));   // Excel serial
         assertThat(ValueConverters.decimal("1.2340", comma)).contains(new BigDecimal("1.2340"));      // XLSX number text

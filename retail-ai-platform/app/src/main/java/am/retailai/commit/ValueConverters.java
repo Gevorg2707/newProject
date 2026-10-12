@@ -101,7 +101,8 @@ public final class ValueConverters {
         String pattern = s.dateFormat() == null ? "dd.MM.yyyy" : s.dateFormat();
         for (String p : new String[]{pattern + " HH:mm:ss", pattern + " HH:mm", pattern}) {
             try {
-                DateTimeFormatter f = DateTimeFormatter.ofPattern(p);
+                // STRICT: 31.02 is an error, not 28.02. STRICT needs 'u' (proleptic year) instead of 'y' (year of era).
+                DateTimeFormatter f = DateTimeFormatter.ofPattern(p.replace('y', 'u')).withResolverStyle(java.time.format.ResolverStyle.STRICT);
                 if (p.contains("HH")) {
                     return Optional.of(LocalDateTime.parse(v, f).atZone(zone).toOffsetDateTime());
                 }

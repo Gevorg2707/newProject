@@ -270,6 +270,20 @@ class ImportIntegrityIT {
     }
 
     @Test
+    void mappedColumnMissingFromTheFile_isReportedOnce() {
+        // C37: optional fields silently became empty
+        var s = new MappingSettings(false, "AMD", "dd.MM.yyyy", ".", List.of("Doc", "SKU"), null, List.of("RETURN"), "Asia/Yerevan", null, null);
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.SALE_LINE, "sales",
+            Map.of("document_number", "Doc", "occurred_at", "Date", "operation_type", "Op", "sku_code", "SKU", "quantity", "Qty",
+                "gross_amount", "Gross", "discount_amount", "Disc"), s));
+
+        CommitReport r = load(m, "w.csv", HEADER + "H-1,01.09.2026,SALE,A,2,70000,\nH-2,01.09.2026,SALE,B,1,12000,\n");
+
+        assertThat(r.issues()).filteredOn(i -> i.code().equals("mapped_column_missing")).singleElement()
+            .satisfies(i -> assertThat(i.message()).contains("Disc").contains("discount_amount"));
+    }
+
+    @Test
     void purgeRaw_emptiesOriginalRows_andMarksTheBatchPurged() {
         load(sales(List.of("Doc", "SKU")), "w1.csv", HEADER + "H-1,01.09.2026,SALE,A,2,70000,\n");
 
