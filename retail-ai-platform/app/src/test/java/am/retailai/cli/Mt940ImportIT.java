@@ -122,6 +122,18 @@ class Mt940ImportIT {
         assertThat(sql(t, "SELECT max(source_version)::text FROM bank_transactions")).isEqualTo("1");
     }
 
+    @Test
+    void csvStatementOfOneBank_andMt940OfAnother_bothImport_despiteDifferentIdentityColumns() throws Exception {
+        TenantId t = cli.createTenant("Two Banks Shop", out);
+        cli.importFile(t, Path.of("src/test/resources/fixtures/synthetic_bank_statement.csv"),
+            Path.of("../docs/samples/mappings/bank_statement_credit_debit_v1.json"), "acc", out);
+
+        CommitReport r = cli.importFile(t, Path.of("src/test/resources/fixtures/synthetic_statement.sta"), mapping, "acc", out);
+
+        assertThat(r.rowsCommitted()).isEqualTo(3);
+        assertThat(sql(t, "SELECT count(DISTINCT identity_scheme)::text FROM import_batches")).isEqualTo("2");
+    }
+
     private String sql(TenantId t, String q) {
         return tenantTx.inTenant(t, j -> j.sql(q).query(String.class).single());
     }

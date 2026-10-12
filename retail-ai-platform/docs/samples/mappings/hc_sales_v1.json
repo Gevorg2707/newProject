@@ -1,7 +1,7 @@
 {
   "sourceSystem": "HC_TRADE",
   "targetEntity": "SALE_LINE",
-  "name": "HC sales grid v1 (synthetic layout — replace headers with the client's real export)",
+  "name": "HC sales grid v1 (synthetic layout; 'Գումար (ԱԱՀ-ով)' is after discount, so it is net_amount; replace headers with the client's real export)",
   "fieldToHeader": {
     "document_number": "Փաստաթղթի համար",
     "occurred_at": "Ամսաթիվ",
@@ -11,18 +11,23 @@
     "unit": "Չափի միավոր",
     "warehouse": "Պահեստ",
     "quantity": "Քանակ",
-    "gross_amount": "Գումար (ԱԱՀ-ով)",
     "discount_amount": "Զեղչ",
-    "cogs_amount": "Ինքնարժեք (առանց ԱԱՀ)"
+    "cogs_amount": "Ինքնարժեք (առանց ԱԱՀ)",
+    "net_amount": "Գումար (ԱԱՀ-ով)"
   },
   "settings": {
     "vatIncluded": true,
     "currency": "AMD",
     "dateFormat": "dd.MM.yyyy",
     "decimalSeparator": ".",
-    "idColumns": ["Փաստաթղթի համար", "Ապրանքի կոդ"],
+    "idColumns": [
+      "Փաստաթղթի համար",
+      "Ապրանքի կոդ"
+    ],
     "platform": null,
-    "returnMarkers": ["Վերադարձ գնորդից"],
+    "returnMarkers": [
+      "Վերադարձ գնորդից"
+    ],
     "timezone": "Asia/Yerevan",
     "accountRef": null,
     "asOfDate": null

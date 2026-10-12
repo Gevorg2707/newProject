@@ -10,6 +10,8 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Pure conversion helpers. They never throw on user data: Optional.empty() means "could not convert". */
 public final class ValueConverters {
@@ -17,26 +19,78 @@ public final class ValueConverters {
     private ValueConverters() {
     }
 
-    /** Accepts "1 234,56", "1,234.56", "1234", "-12.5", "(12.5)"; decimal separator from settings. */
+    private static final Pattern NUMBER_CORE = Pattern.compile("^[^0-9.,()\\-]*([0-9.,()\\-]+)[^0-9.,()\\-]*$");
+    private static final Pattern GROUPED = Pattern.compile("^\\d{1,3}(X\\d{3})+$");
+
+    /**
+     * Reads an amount. The separator layout decides first: with both '.' and ',' the last one is the decimal; a lone
+     * separator not followed by exactly 3 digits cannot be grouping, so it is the decimal. Only a lone separator followed by
+     * exactly 3 digits ("1,234") is ambiguous; the mapping's decimalSeparator decides it. Typographic minus, a trailing minus
+     * and accounting parentheses ("(1 234,56) AMD") are negatives. A currency token may precede or follow the number.
+     * Malformed grouping ("1,23,4") or anything between digits is unreadable: empty, never a guess.
+     */
     public static Optional<BigDecimal> decimal(String raw, MappingSettings s) {
         if (raw == null || raw.isBlank()) return Optional.empty();
-        String v = raw.trim().replace(" ", "").replace(" ", "");
-        boolean negative = v.startsWith("(") && v.endsWith(")");
-        if (negative) v = v.substring(1, v.length() - 1);
-        String dec = s.decimalSeparator() == null ? "." : s.decimalSeparator();
-        if (",".equals(dec)) {
-            v = v.replace(".", "").replace(',', '.');
-        } else {
-            v = v.replace(",", "");
+        String v = raw.replaceAll("[\\s\\p{Z}]", "").replaceAll("[\\u2212\\u2012\\u2013\\u2014\\uFE63\\uFF0D]", "-");
+        Matcher core = NUMBER_CORE.matcher(v);
+        if (!core.matches()) return Optional.empty();
+        v = core.group(1);
+
+        boolean negative = false;
+        if (v.startsWith("(") && v.endsWith(")")) {
+            negative = true;
+            v = v.substring(1, v.length() - 1);
+        } else if (v.startsWith("-")) {
+            negative = true;
+            v = v.substring(1);
+        } else if (v.endsWith("-")) {
+            negative = true;
+            v = v.substring(0, v.length() - 1);
         }
-        v = v.replaceAll("[^0-9.\\-]", "");
-        if (v.isEmpty() || v.equals("-") || v.equals(".")) return Optional.empty();
+        if (!v.matches("[0-9.,]*[0-9][0-9.,]*")) return Optional.empty();   // no second sign, no stray parenthesis
+
+        String plain = withDotDecimal(v, s.decimalSeparator() == null ? '.' : s.decimalSeparator().charAt(0));
+        if (plain == null) return Optional.empty();
         try {
-            BigDecimal d = new BigDecimal(v);
+            BigDecimal d = new BigDecimal(plain);
             return Optional.of(negative ? d.negate() : d);
         } catch (NumberFormatException e) {
             return Optional.empty();
         }
+    }
+
+    /** "1.234.567,89" -> "1234567.89"; null when the grouping is malformed. */
+    private static String withDotDecimal(String v, char mappingDecimal) {
+        int dots = (int) v.chars().filter(c -> c == '.').count();
+        int commas = (int) v.chars().filter(c -> c == ',').count();
+        char decimal;
+        if (dots > 0 && commas > 0) {
+            decimal = v.lastIndexOf('.') > v.lastIndexOf(',') ? '.' : ',';
+        } else if (dots + commas == 0) {
+            return v;
+        } else if (dots + commas > 1) {
+            decimal = 0;   // the only separator repeats: it is grouping
+        } else {
+            char only = dots > 0 ? '.' : ',';
+            int digitsAfter = v.length() - v.indexOf(only) - 1;
+            decimal = digitsAfter != 3 || only == mappingDecimal ? only : 0;
+        }
+        String intPart = v, fraction = null;
+        if (decimal != 0) {
+            int at = v.lastIndexOf(decimal);
+            if (v.indexOf(decimal) != at) return null;
+            intPart = v.substring(0, at);
+            fraction = v.substring(at + 1);
+            if (fraction.isEmpty() || !fraction.chars().allMatch(Character::isDigit)) return null;
+        }
+        char grouping = decimal == '.' ? ',' : decimal == ',' ? '.' : (dots > 0 ? '.' : ',');
+        if (intPart.indexOf(grouping) >= 0) {
+            if (!GROUPED.matcher(intPart.replace(grouping, 'X')).matches()) return null;
+            intPart = intPart.replace(String.valueOf(grouping), "");
+        }
+        if (!intPart.chars().allMatch(Character::isDigit)) return null;
+        if (intPart.isEmpty()) intPart = "0";
+        return fraction == null ? intPart : intPart + "." + fraction;
     }
 
     /** Date or date-time in the mapping's format, interpreted in the tenant timezone; also accepts ISO. */

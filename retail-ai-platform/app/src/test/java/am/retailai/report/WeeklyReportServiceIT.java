@@ -53,7 +53,7 @@ class WeeklyReportServiceIT {
             Map.ofEntries(Map.entry("document_number", "Փաստաթղթի համար"), Map.entry("occurred_at", "Ամսաթիվ"),
                 Map.entry("operation_type", "Գործառնության տեսակ"), Map.entry("sku_code", "Ապրանքի կոդ"),
                 Map.entry("sku_name", "Ապրանքի անվանում"), Map.entry("quantity", "Քանակ"),
-                Map.entry("gross_amount", "Գումար (ԱԱՍ-ով)".replace("ԱԱՍ", "ԱԱՀ")), Map.entry("discount_amount", "Զեղչ"),
+                Map.entry("net_amount", "Գումար (ԱԱՍ-ով)".replace("ԱԱՍ", "ԱԱՀ")), Map.entry("discount_amount", "Զեղչ"),
                 Map.entry("cogs_amount", "Ինքնարժեք (առանց ԱԱՀ)")), settings));
         ImportResult imported = importService.upload(tenant, am.retailai.imports.ImportSpec.allColumns(SourceSystem.HC_TRADE, settings.idColumns()), "HC_sales.xlsx", Fixtures.bytes("fixtures/synthetic_hc_sales.xlsx"), "tester");
         commitService.commit(tenant, imported.batchId(), mapping);

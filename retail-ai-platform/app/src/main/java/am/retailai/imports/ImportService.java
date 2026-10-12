@@ -57,14 +57,11 @@ public class ImportService {
         }
 
         return tenantTx.inTenant(tenant, jdbc -> {
-            List<String> otherSchemes = jdbc.sql("""
-                    SELECT DISTINCT identity_scheme FROM import_batches
-                    WHERE source_system = :source AND identity_scheme IS NOT NULL AND identity_scheme <> :scheme
-                    """).param("source", source.name()).param("scheme", spec.identityScheme()).query(String.class).list();
-            if (!otherSchemes.isEmpty()) {
-                throw new IllegalStateException("Row identity for " + source + " was " + otherSchemes
-                    + " in earlier imports, now " + spec.identityScheme() + ". Keep the same idColumns in the mapping;"
-                    + " changing them would count the same rows twice. Nothing was imported.");
+            String conflicting = conflictingScheme(jdbc, source, spec, rows);
+            if (conflicting != null) {
+                throw new IllegalStateException("Row identity for " + source + " was " + conflicting
+                    + " in earlier imports of this file layout, now " + spec.identityScheme() + ". Keep the same idColumns"
+                    + " in the mapping; changing them would count the same rows twice. Nothing was imported.");
             }
 
             Optional<Map<String, Object>> existing = jdbc.sql("""
@@ -148,6 +145,28 @@ public class ImportService {
             int known = rows.size() - inserted - updated - rejected;
             return new ImportResult(batchId, false, rows.size(), inserted, updated, known, rejected, "parsed");
         });
+    }
+
+    /**
+     * An earlier identity scheme of the same source whose columns are all present in this file: same layout, changed
+     * idColumns. A different layout (CSV of one bank, MT940 of another) does not carry the old columns and may differ.
+     */
+    private static String conflictingScheme(JdbcClient jdbc, SourceSystem source, ImportSpec spec, List<ParsedRow> rows) {
+        if (rows.isEmpty()) return null;
+        Set<String> headers = rows.getFirst().asMap().keySet();
+        List<Map<String, Object>> others = jdbc.sql("""
+                SELECT DISTINCT ON (identity_scheme) identity_scheme, id FROM import_batches
+                WHERE source_system = :source AND identity_scheme IS NOT NULL AND identity_scheme <> :scheme
+                """).param("source", source.name()).param("scheme", spec.identityScheme()).query().listOfRows();
+        for (Map<String, Object> other : others) {
+            String scheme = (String) other.get("identity_scheme");
+            List<String> columns = scheme.startsWith("cols:")
+                ? List.of(scheme.substring("cols:".length()).split("\\|"))
+                : jdbc.sql("SELECT DISTINCT jsonb_object_keys(raw_payload) FROM source_records WHERE import_batch_id = :b")
+                    .param("b", other.get("id")).query(String.class).list();
+            if (!columns.isEmpty() && headers.containsAll(columns)) return scheme;
+        }
+        return null;
     }
 
     /** True when the spec would store columns of this file that the batch's stored rows do not have. */

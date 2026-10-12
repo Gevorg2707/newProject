@@ -54,7 +54,7 @@ class CommitServiceIT {
             Map.entry("unit", "Չափի միավոր"),
             Map.entry("warehouse", "Պահեստ"),
             Map.entry("quantity", "Քանակ"),
-            Map.entry("gross_amount", "Գումար (ԱԱՀ-ով)"),
+            Map.entry("net_amount", "Գումար (ԱԱՀ-ով)"),
             Map.entry("discount_amount", "Զեղչ"),
             Map.entry("cogs_amount", "Ինքնարժեք (առանց ԱԱՀ)")), settings);
     }

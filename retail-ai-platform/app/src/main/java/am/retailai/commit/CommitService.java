@@ -114,7 +114,9 @@ public class CommitService {
         String opRaw = r.required("operation_type");
         String sku = r.required("sku_code");
         BigDecimal qty = r.decimal("quantity", true).orElse(null);
-        BigDecimal gross = r.decimal("gross_amount", true).orElse(null);
+        // gross_amount = before discount. An export whose amount is after discount maps it as net_amount instead.
+        boolean netMapped = r.mapping.headerFor("gross_amount") == null && r.mapping.headerFor("net_amount") != null;
+        BigDecimal amount = r.decimal(netMapped ? "net_amount" : "gross_amount", true).orElse(null);
         BigDecimal discount = r.decimal("discount_amount", false).orElse(BigDecimal.ZERO);
         BigDecimal vat = r.decimal("vat_amount", false).orElse(null);
         BigDecimal cogs = r.decimal("cogs_amount", false).orElse(null);
@@ -123,18 +125,45 @@ public class CommitService {
         if (s.vatIncluded() == null) {
             r.warn("vat_unknown", "gross_amount", "VAT inclusion not confirmed; net sales KPIs will be flagged");
         }
-        if (cogs == null) {
-            r.warn("no_cogs", "cogs_amount", "No cost of goods; gross profit for this line is unavailable");
-        }
         if (r.hasErrors()) return Write.UNCHANGED;
 
+        // Amounts are stored as magnitudes; operation_type carries the direction (KPI and reconciliation subtract returns).
         String operation = isReturn(opRaw, s) ? "RETURN" : "SALE";
-        if (qty.signum() < 0) {
-            qty = qty.abs();
-            if (operation.equals("SALE")) {
-                r.warn("negative_quantity", "quantity", "Negative quantity on a sale row; treated as RETURN");
-                operation = "RETURN";
+        if (operation.equals("SALE")) {
+            int q = qty.signum(), a = amount.signum();
+            if (q * a < 0) {
+                r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "sign_conflict", "quantity",
+                    "Quantity and amount have opposite signs on a sale row; cannot tell a sale from a return"));
+                return Write.UNCHANGED;
             }
+            if (q < 0 || a < 0) {
+                r.warn("negative_sale_row", "quantity", "Negative quantity/amount on a sale row; treated as RETURN");
+                operation = "RETURN";
+            } else {
+                if (discount.signum() < 0) {
+                    r.warn("negative_discount", "discount_amount", "Negative discount read as a reduction of the amount");
+                }
+                if (cogs != null && cogs.signum() < 0) {
+                    r.warn("negative_cogs", "cogs_amount", "Negative cost on a sale row stored as a positive cost");
+                }
+            }
+        }
+        qty = qty.abs();
+        amount = amount.abs();
+        discount = discount.abs();
+        vat = vat == null ? null : vat.abs();
+        cogs = cogs == null ? null : cogs.abs();
+        BigDecimal gross = netMapped ? amount.add(discount) : amount;
+        if (discount.compareTo(gross) > 0) {
+            r.warn("discount_exceeds_gross", "discount_amount", "Discount is larger than the amount before discount");
+        }
+        if (cogs != null && cogs.signum() == 0 && gross.signum() > 0) {
+            // HC/1C print 0 when cost is not calculated yet (e.g. sold from negative stock): unknown, not free goods
+            r.warn("zero_cogs", "cogs_amount", "Cost 0 on a priced line treated as unknown cost");
+            cogs = null;
+        }
+        if (cogs == null) {
+            r.warn("no_cogs", "cogs_amount", "No cost of goods; gross profit for this line is unavailable");
         }
         UUID productId = productFor(jdbc, tenant, source, sku, r.text("sku_name"), r.text("unit"), productCache, r);
 
@@ -248,8 +277,9 @@ public class CommitService {
         if (r.mapping.headerFor("amount") != null) {
             amount = r.decimal("amount", true).orElse(null);
         } else {
-            BigDecimal credit = r.decimal("credit", false).orElse(BigDecimal.ZERO);
-            BigDecimal debit = r.decimal("debit", false).orElse(BigDecimal.ZERO);
+            // The column is the direction; a sign or parentheses inside it is only the bank's formatting.
+            BigDecimal credit = r.decimal("credit", false).orElse(BigDecimal.ZERO).abs();
+            BigDecimal debit = r.decimal("debit", false).orElse(BigDecimal.ZERO).abs();
             amount = credit.subtract(debit);
             if (r.mapping.headerFor("credit") == null && r.mapping.headerFor("debit") == null) {
                 r.issues.add(ValidationIssue.error(r.sourceRecordId, r.rowNumber, "missing_field", "amount",
