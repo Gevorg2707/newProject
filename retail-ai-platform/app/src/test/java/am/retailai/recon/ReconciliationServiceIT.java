@@ -125,6 +125,107 @@ class ReconciliationServiceIT {
     }
 
     @Test
+    void amountOnlyMirror_isPlausible_expensesAndOtherCurrenciesAreNeverPaired() {
+        // C50: any equal debit/credit pair was a MATCHED internal transfer
+        bank("Ameria main", "T1", "2026-09-02", "-300000", "Transfer");
+        bank("Inecobank reserve", "T2", "2026-09-02", "300000", "Transfer");
+        UUID rent = bank("Ameria main", "T3", "2026-09-05", "-150000", "Rent", "rent");
+        bank("Inecobank reserve", "T4", "2026-09-05", "150000", "Incoming");
+        bankIn("USD", "Ameria main", "T5", "2026-09-07", "-500", "Transfer");
+        bank("Inecobank reserve", "T6", "2026-09-07", "500", "Incoming");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+
+        assertThat(r.lines()).filteredOn(l -> l.matchType().equals("INTERNAL_TRANSFER_PAIR")).singleElement()
+            .satisfies(l -> assertThat(l.status()).isEqualTo("PLAUSIBLE"));
+        assertThat(flag(rent)).isFalse();
+    }
+
+    @Test
+    void settlementSplitAcrossSeveralCreditsOfOneDay_isMatchedAsAWhole() {
+        // C60: ArCa and Visa/MC (or two terminals) settle the same sales day separately
+        sale("S1", "2026-09-10", "SALE", "100000", "0", "Card");
+        bank("Ameria main", "A1", "2026-09-11", "60000", "POS acquiring ArCa", "acquiring");
+        bank("Ameria main", "A2", "2026-09-11", "39000", "POS acquiring Visa", "acquiring");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+
+        assertThat(r.settlementsMatched()).isEqualTo(2);
+        assertThat(r.settlementsUnmatched()).isZero();
+        assertThat(r.salesDaysWithoutSettlement()).isZero();
+        assertThat(r.averageImpliedFeeRate()).isEqualByComparingTo("0.01000");
+    }
+
+    @Test
+    void paymentMethodOnlyOnSomeLines_isStillOnlyAProxy() {
+        // C61: one line with a method switched to "payment method known" and dropped the others
+        sale("S1", "2026-09-10", "SALE", "100000", "0", "Card");
+        sale("S2", "2026-09-12", "SALE", "80000", "0", null);
+        bank("Ameria main", "A1", "2026-09-13", "79000", "POS", "acquiring");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+
+        assertThat(r.method()).isEqualTo("TOTAL_SALES_PROXY");
+        assertThat(r.settlementsMatched()).isZero();
+        assertThat(r.salesDaysWithoutSettlement()).isZero();
+    }
+
+    @Test
+    void averageFee_isWeightedByAmount() {
+        // C67: (1,000 + 30) / 101,000, not the mean of 1% and 3%
+        sale("S1", "2026-09-10", "SALE", "100000", "0", "Card");
+        sale("S2", "2026-09-14", "SALE", "1000", "0", "Card");
+        bank("Ameria main", "A1", "2026-09-11", "99000", "POS", "acquiring");
+        bank("Ameria main", "A2", "2026-09-15", "970", "POS", "acquiring");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+
+        assertThat(r.averageImpliedFeeRate()).isEqualByComparingTo("0.01020");
+    }
+
+    @Test
+    void bothLegsWithTheOwnAccountMarker_farApart_areOneTransfer() {
+        // C68
+        marker("Ameria main", "M1", "2026-09-02", "-200000");
+        marker("Inecobank reserve", "M2", "2026-09-09", "200000");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+
+        assertThat(r.internalTransfers()).isEqualTo(1);
+        assertThat(r.internalTransferAmount()).isEqualByComparingTo("200000.00");
+    }
+
+    @Test
+    void transferAcrossTheMonthEnd_staysFlagged_whateverOrderThePeriodsRun() {
+        // C69: the October run unflagged the credit but could not re-pair it
+        UUID out = bank("Ameria main", "T1", "2026-09-30", "-300000", "Transfer");
+        UUID in = bank("Inecobank reserve", "T2", "2026-10-01", "300000", "Transfer");
+
+        recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+        recon.reconcile(tenant, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31), ReconciliationSettings.defaults());
+
+        assertThat(flag(out)).isTrue();
+        assertThat(flag(in)).isTrue();
+    }
+
+    @Test
+    void giftAndBonusCardsSplitTenderAndDeposit_areNotCardSales() {
+        // C84
+        sale("S1", "2026-09-10", "SALE", "100000", "0", "Card");
+        sale("S2", "2026-09-10", "SALE", "50000", "0", "Նվեր քարտ");
+        sale("S3", "2026-09-10", "SALE", "40000", "0", "Bonus card");
+        sale("S4", "2026-09-10", "SALE", "30000", "0", "Deposit");
+        sale("S5", "2026-09-10", "SALE", "20000", "0", "Cash");
+        bank("Ameria main", "A1", "2026-09-11", "98500", "POS", "acquiring");
+
+        ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
+
+        assertThat(r.method()).isEqualTo("CARD_SALES");
+        assertThat(r.lines()).filteredOn(l -> "MATCHED".equals(l.status()) && l.salesAmount() != null).singleElement()
+            .satisfies(l -> assertThat(l.salesAmount()).isEqualByComparingTo("100000"));
+    }
+
+    @Test
     void rerunForSamePeriod_replacesResults_doesNotDuplicate() {
         bank("Ameria main", "T1", "2026-09-02", "-300000", "Transfer");
         bank("Inecobank reserve", "T2", "2026-09-02", "300000", "Transfer");
@@ -167,6 +268,20 @@ class ReconciliationServiceIT {
                 """).param("t", tenant.value()).param("b", batch).param("acc", account).param("txn", txnId)
             .param("at", LocalDate.parse(date).atTime(10, 0).atOffset(ZoneOffset.ofHours(4))).param("amt", new BigDecimal(amount))
             .param("d", desc).param("tags", tags).query(UUID.class).single());
+    }
+
+    private UUID bankIn(String currency, String account, String txnId, String date, String amount, String desc) {
+        UUID id = bank(account, txnId, date, amount, desc);
+        tenantTx.inTenant(tenant, j -> j.sql("UPDATE bank_transactions SET currency = :c WHERE id = :id").param("c", currency).param("id", id).update());
+        return id;
+    }
+
+    private UUID marker(String account, String txnId, String date, String amount) {
+        UUID id = bank(account, txnId, date, amount, "Own account");
+        tenantTx.inTenant(tenant, j -> j.sql("""
+                UPDATE bank_transactions SET is_internal_transfer = true, internal_transfer_reason = 'own_account_marker' WHERE id = :id
+                """).param("id", id).update());
+        return id;
     }
 
     private void sale(String doc, String date, String op, String gross, String discount, String paymentMethod) {
