@@ -27,7 +27,8 @@ final class ReportLabels {
         Map.entry(KpiFlags.ADS_NOT_FINAL, "Վերջին 28 օրվա գովազդի ծախսը դեռ վերջնական չէ. հարթակը կարող է այն վերահաշվարկել"),
         Map.entry(KpiFlags.INVENTORY_STALE, "Պահեստի մնացորդի վերջին տվյալը շրջանի ավարտից 7 օրից ավելի հին է"),
         Map.entry(KpiFlags.NEGATIVE_STOCK, "Պահեստում բացասական մնացորդ կա (հաշվառման սխալ). հաշվվել է որպես 0"),
-        Map.entry(KpiFlags.MIXED_CURRENCY, "Այլ արժույթով տողերը կամ գովազդի ծախսը չեն ներառվել ընդհանուր գումարներում")
+        Map.entry(KpiFlags.MIXED_CURRENCY, "Այլ արժույթով տողերը կամ գովազդի ծախսը չեն ներառվել ընդհանուր գումարներում"),
+        Map.entry(KpiFlags.RETURN_COST_ESTIMATED, "Առանց ինքնարժեքի վերադարձները գնահատվել են ապրանքի միջին ինքնարժեքով (ենթադրություն)")
     );
 
     static final Map<String, String> ISSUE_CODES = Map.ofEntries(

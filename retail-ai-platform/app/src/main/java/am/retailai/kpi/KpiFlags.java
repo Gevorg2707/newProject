@@ -12,5 +12,6 @@ public enum KpiFlags {
     ADS_NOT_FINAL,            // ad spend for days within the last 28 days may still be restated by the platform
     INVENTORY_STALE,          // the latest stock snapshot of a warehouse is more than 7 days older than the period end
     NEGATIVE_STOCK,           // a warehouse reports a negative balance (posting error); it is counted as 0, not netted
-    MIXED_CURRENCY            // lines or ad spend in another currency were left out of the totals
+    MIXED_CURRENCY,           // lines or ad spend in another currency were left out of the totals
+    RETURN_COST_ESTIMATED     // a return without cost was costed at the SKU's average sale cost in the period (assumption)
 }

@@ -151,7 +151,9 @@ class ReconciliationServiceIT {
         String tags = tenantTx.inTenant(tenant, j -> j.sql("SELECT array_to_string(description_tags, ',') FROM bank_transactions WHERE txn_id = 'TRX-88213'").query(String.class).single());
         assertThat(reason).isEqualTo("own_account_marker");
         assertThat(desc).doesNotContain("1570012345670001");     // masked after detection
-        assertThat(tags).contains("acquiring");                   // tagged before masking
+        assertThat(tags).contains("acquiring");                   // tagged before masking: the masked text has no such word
+        String masked = tenantTx.inTenant(tenant, j -> j.sql("SELECT description FROM bank_transactions WHERE txn_id = 'TRX-88213'").query(String.class).single());
+        assertThat(am.retailai.commit.BankDescriptionTagger.tags(masked)).doesNotContain("acquiring");
 
         ReconciliationReport r = recon.reconcile(tenant, from, to, ReconciliationSettings.defaults());
         assertThat(r.lines()).anySatisfy(l -> assertThat(l.method()).isEqualTo("OWN_ACCOUNT_MARKER"));

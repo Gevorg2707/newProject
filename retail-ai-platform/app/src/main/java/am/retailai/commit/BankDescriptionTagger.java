@@ -27,9 +27,12 @@ public final class BankDescriptionTagger {
     public static Set<String> tags(String rawDescription) {
         Set<String> out = new LinkedHashSet<>();
         if (rawDescription == null || rawDescription.isBlank()) return out;
-        String d = rawDescription.toLowerCase(Locale.ROOT);
+        // NBSP, tabs and double spaces would break multi-word terms
+        String d = rawDescription.replaceAll("[\\s\\p{Z}]+", " ").toLowerCase(Locale.ROOT);
+        String withoutSalary = d.replace("աշխատավարձ", " ");   // 'վարձ' (rent) is inside 'աշխատավարձ' (salary)
         VOCABULARY.forEach((tag, words) -> {
-            if (words.stream().anyMatch(w -> containsWord(d, w.toLowerCase(Locale.ROOT)))) out.add(tag);
+            String text = tag.equals("rent") ? withoutSalary : d;
+            if (words.stream().anyMatch(w -> containsWord(text, w.toLowerCase(Locale.ROOT)))) out.add(tag);
         });
         return out;
     }

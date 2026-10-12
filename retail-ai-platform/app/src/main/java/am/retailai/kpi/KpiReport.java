@@ -22,7 +22,7 @@ public record KpiReport(
     BigDecimal netSales,
     BigDecimal cogs,
     BigDecimal grossProfit,
-    BigDecimal cogsCoverage,       // share of net sales (0..1) that has COGS
+    BigDecimal cogsCoverage,       // share of sales+returns turnover (0..1) whose lines have a real COGS
     BigDecimal marketingSpend,
     BigDecimal variableCosts,
     BigDecimal contribution,

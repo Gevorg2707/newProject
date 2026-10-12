@@ -113,6 +113,7 @@ public class KpiService {
             // ---- aggregate per SKU ----
             Map<String, SkuAcc> perSku = new LinkedHashMap<>();
             BigDecimal grossSales = BigDecimal.ZERO, discounts = BigDecimal.ZERO, returns = BigDecimal.ZERO;
+            BigDecimal turnover = BigDecimal.ZERO, turnoverWithCogs = BigDecimal.ZERO;   // |sales| + |returns|, for coverage
             int saleLines = 0, returnLines = 0;
             BigDecimal vatDivisor = BigDecimal.ONE.add(settings.vatRate());
 
@@ -139,6 +140,8 @@ public class KpiService {
                     flags.add(KpiFlags.COGS_MISSING);
                     acc.flags.add(KpiFlags.COGS_MISSING);
                 }
+                turnover = turnover.add(netGroup.abs());
+                if (hasCogs) turnoverWithCogs = turnoverWithCogs.add(netGroup.abs());
 
                 if (isReturn) {
                     returns = returns.add(netGroup);
@@ -146,13 +149,28 @@ public class KpiService {
                     acc.unitsReturned = acc.unitsReturned.add(qty);
                     acc.netSales = acc.netSales.subtract(netGroup);
                     if (hasCogs) { acc.cogs = acc.cogs.subtract(cogs); acc.netSalesWithCogs = acc.netSalesWithCogs.subtract(netGroup); acc.anyCogs = true; }
+                    else { acc.uncostedReturnNet = acc.uncostedReturnNet.add(netGroup); acc.uncostedReturnQty = acc.uncostedReturnQty.add(qty); }
                 } else {
                     grossSales = grossSales.add(gross);
                     discounts = discounts.add(discount);
                     saleLines += lines;
                     acc.unitsSold = acc.unitsSold.add(qty);
                     acc.netSales = acc.netSales.add(netGroup);
-                    if (hasCogs) { acc.cogs = acc.cogs.add(cogs); acc.netSalesWithCogs = acc.netSalesWithCogs.add(netGroup); acc.anyCogs = true; }
+                    if (hasCogs) {
+                        acc.cogs = acc.cogs.add(cogs); acc.netSalesWithCogs = acc.netSalesWithCogs.add(netGroup); acc.anyCogs = true;
+                        acc.costedSaleQty = acc.costedSaleQty.add(qty); acc.costedSaleCogs = acc.costedSaleCogs.add(cogs);
+                    }
+                }
+            }
+            // A refund without cost: its goods came back, so their cost leaves COGS too. Estimated at the SKU's average
+            // costed sale cost in the period and flagged; otherwise GP would keep the margin of goods that were returned.
+            for (SkuAcc a : perSku.values()) {
+                if (a.uncostedReturnQty.signum() > 0 && a.costedSaleQty.signum() > 0) {
+                    BigDecimal unitCost = a.costedSaleCogs.divide(a.costedSaleQty, CALC_SCALE, RoundingMode.HALF_UP);
+                    a.cogs = a.cogs.subtract(unitCost.multiply(a.uncostedReturnQty));
+                    a.netSalesWithCogs = a.netSalesWithCogs.subtract(a.uncostedReturnNet);
+                    a.flags.add(KpiFlags.RETURN_COST_ESTIMATED);
+                    flags.add(KpiFlags.RETURN_COST_ESTIMATED);
                 }
             }
 
@@ -193,8 +211,8 @@ public class KpiService {
             }
 
             BigDecimal grossProfit = netWithCogs.subtract(cogsTotal);
-            BigDecimal coverage = netSales.signum() == 0 ? BigDecimal.ZERO
-                : netWithCogs.divide(netSales, 4, RoundingMode.HALF_UP).max(BigDecimal.ZERO).min(BigDecimal.ONE);
+            // Share of sales and returns turnover with a real cost: 0..1 by construction, never clamped.
+            BigDecimal coverage = turnover.signum() == 0 ? BigDecimal.ZERO : turnoverWithCogs.divide(turnover, 4, RoundingMode.HALF_UP);
             BigDecimal variableCosts = settings.variableCostPerOrder().multiply(BigDecimal.valueOf(saleLines));
             flags.add(KpiFlags.VARIABLE_COSTS_ASSUMED);
             BigDecimal contribution = grossProfit.subtract(variableCosts).subtract(spend);
@@ -217,7 +235,9 @@ public class KpiService {
         final String sku;
         final String name;
         BigDecimal unitsSold = BigDecimal.ZERO, unitsReturned = BigDecimal.ZERO, netSales = BigDecimal.ZERO,
-            cogs = BigDecimal.ZERO, netSalesWithCogs = BigDecimal.ZERO;
+            cogs = BigDecimal.ZERO, netSalesWithCogs = BigDecimal.ZERO,
+            costedSaleQty = BigDecimal.ZERO, costedSaleCogs = BigDecimal.ZERO, uncostedReturnQty = BigDecimal.ZERO,
+            uncostedReturnNet = BigDecimal.ZERO;
         boolean anyCogs = false;
         final Set<KpiFlags> flags = EnumSet.noneOf(KpiFlags.class);
 

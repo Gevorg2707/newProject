@@ -246,6 +246,22 @@ class KpiServiceIT {
         assertThat(r.flags()).contains(KpiFlags.MIXED_CURRENCY);
     }
 
+    @Test
+    void returnWithoutCost_takesTheSkusAverageSaleCost_andCoverageNeverClaimsMoreThanIsKnown() {
+        // C22: the returned goods' margin stayed in GP, and coverage above 100% was clamped to "100%"
+        UUID p = product("A-1045", "Shirt");
+        sale("Հ-1", "2026-09-10", "SALE", p, "A-1045", "2", "70000", "0", "44000", false);   // 22,000 per unit
+        sale("Վ-1", "2026-09-20", "RETURN", p, "A-1045", "1", "35000", "0", null, false);     // refund without cost
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(r.netSales()).isEqualByComparingTo("35000.00");
+        assertThat(r.cogs()).isEqualByComparingTo("22000.00");          // 44,000 − estimated 22,000 came back
+        assertThat(r.grossProfit()).isEqualByComparingTo("13000.00");
+        assertThat(r.cogsCoverage()).isEqualByComparingTo("0.6667");    // 70,000 of 105,000 turnover has a real cost
+        assertThat(r.flags()).contains(KpiFlags.RETURN_COST_ESTIMATED, KpiFlags.COGS_MISSING);
+    }
+
     // ---- helpers ----
     private UUID product(String sku, String name) {
         return tenantTx.inTenant(tenant, j -> j.sql("INSERT INTO products (tenant_id, sku_code, name) VALUES (:t, :s, :n) RETURNING id")
