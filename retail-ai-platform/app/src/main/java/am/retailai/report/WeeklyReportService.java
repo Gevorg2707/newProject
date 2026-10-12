@@ -31,6 +31,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
@@ -119,7 +120,7 @@ public class WeeklyReportService {
         text(s, st, r++, "Պատրաստված", OffsetDateTime.now(clock).format(DT));   // Yerevan time, not the server's
         r++;
         header(s, st, r++, "Ցուցանիշ", "Արժեք", "Բանաձև / նշում");
-        money(s, st, r++, "Համախառն վաճառք (gross sales)", k.grossSales(), "Վաճառքի տողերի գումար, զեղչից առաջ");
+        money(s, st, r++, "Համախառն վաճառք (gross sales)", k.grossSales(), "Վաճառքի տողերի գումար, զեղչից առաջ, առանց ԱԱՀ, եթե ԱԱՀ-ի հիմքը հայտնի է");
         money(s, st, r++, "Զեղչեր", k.discounts(), "");
         money(s, st, r++, "Վերադարձներ", k.returns(), "Վերադարձի տողեր, ԱԱՍ-ի ուղղումով, եթե հայտնի է".replace("ԱԱՍ", "ԱԱՀ"));
         money(s, st, r++, "Մաքուր վաճառք (net sales)", k.netSales(), "Համախառն − զեղչ − վերադարձ, առանց ԱԱՀ, եթե ԱԱՀ-ի հիմքը հայտնի է");
@@ -127,7 +128,7 @@ public class WeeklyReportService {
         money(s, st, r++, "Համախառն շահույթ (gross profit)", k.grossProfit(), "Մաքուր վաճառք − COGS, նույն տողերով");
         pct(s, st, r++, "COGS-ի ծածկույթ", k.cogsCoverage(), "Վաճառքի և վերադարձի շրջանառության մասը, որի ինքնարժեքը հայտնի է");
         money(s, st, r++, "Գովազդի ծախս (ad spend)", k.marketingSpend(), "Ներմուծված արշավների ծախսը շրջանում");
-        money(s, st, r++, "Փոփոխական ծախսեր (ենթադրություն)", k.variableCosts(), "Պատվերի ծախս × վաճառքի տողեր. հաստատել հաշվապահի հետ");
+        money(s, st, r++, "Փոփոխական ծախսեր (ենթադրություն)", k.variableCosts(), "Մեկ հատի ծախս × վաճառված հատեր. հաստատել հաշվապահի հետ");
         money(s, st, r++, "Ծածկույթ (contribution)", k.contribution(), "Համախառն շահույթ − փոփոխական ծախս − գովազդ");
         number(s, st, r++, "Վաճառքի տողեր / վերադարձի տողեր", k.saleLines() + " / " + k.returnLines(), "");
         number(s, st, r++, "Վաճառքի օրեր շրջանում", String.valueOf(k.daysWithSales()), "");
@@ -194,7 +195,7 @@ public class WeeklyReportService {
             num(row, 6, x.grossProfit(), st.money);
             num(row, 7, x.onHand(), st.qty);
             num(row, 8, x.dailyVelocity(), st.velocity);
-            num(row, 9, x.daysOfStock(), st.days);
+            num(row, 9, x.daysOfStock() == null ? null : x.daysOfStock().setScale(1, RoundingMode.HALF_UP), st.days);
             cell(row, 10, x.slowMover() ? "Այո" : "", st.text);
             cell(row, 11, String.join("; ", x.flags().stream().sorted().map(f -> ReportLabels.FLAGS.getOrDefault(f, f.name())).toList()), st.text);
         }

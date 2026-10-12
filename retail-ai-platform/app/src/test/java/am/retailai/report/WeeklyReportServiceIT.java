@@ -79,8 +79,8 @@ class WeeklyReportServiceIT {
             // computed from the fixture cells independently (see PilotCliIT.septemberKpis_matchTheFileComputedIndependently)
             var k = kpiService.compute(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());
             var cent = org.assertj.core.data.Offset.offset(0.01);
-            assertThat(numericByLabel(summary, "Համախառն վաճառք (gross sales)")).isEqualTo(k.grossSales().doubleValue(), cent).isEqualTo(5595000.00, cent);
-            assertThat(numericByLabel(summary, "Զեղչեր")).isEqualTo(k.discounts().doubleValue(), cent).isEqualTo(77000.00, cent);
+            assertThat(numericByLabel(summary, "Համախառն վաճառք (gross sales)")).isEqualTo(k.grossSales().doubleValue(), cent).isEqualTo(4662500.00, cent);
+            assertThat(numericByLabel(summary, "Զեղչեր")).isEqualTo(k.discounts().doubleValue(), cent).isEqualTo(64166.67, cent);
             assertThat(numericByLabel(summary, "Վերադարձներ")).isEqualTo(k.returns().doubleValue(), cent).isEqualTo(72916.67, cent);
             assertThat(numericByLabel(summary, "Մաքուր վաճառք (net sales)")).isEqualTo(k.netSales().doubleValue(), cent).isEqualTo(4525416.67, cent);
             assertThat(numericByLabel(summary, "Ինքնարժեք (COGS)")).isEqualTo(k.cogs().doubleValue(), cent).isEqualTo(3365800.00, cent);

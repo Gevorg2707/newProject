@@ -77,7 +77,7 @@ class RecommendationServiceIT {
         assertThat(text("SELECT formula_version FROM recommendations LIMIT 1")).isEqualTo("formula_v0");
         assertThat(text("SELECT prompt_version FROM recommendations LIMIT 1")).isEqualTo("template-v2");
         assertThat(text("SELECT facts->>'max_acquisition_cost' FROM recommendations WHERE type = 'AD_TEST'")).isEqualTo("11000.00");
-        assertThat(text("SELECT array_to_string(assumptions, ',') FROM recommendations WHERE type = 'AD_TEST'")).contains("variable_cost_per_order");
+        assertThat(text("SELECT array_to_string(assumptions, ',') FROM recommendations WHERE type = 'AD_TEST'")).contains("variable_cost_per_unit");
     }
 
     @Test

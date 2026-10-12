@@ -19,7 +19,7 @@ final class ReportLabels {
     static final Map<KpiFlags, String> FLAGS = Map.ofEntries(
         Map.entry(KpiFlags.FORMULAS_NOT_CONFIRMED, "Բանաձևերը դեռ հաստատված չեն հաշվապահի կողմից (formula_v0)"),
         Map.entry(KpiFlags.VAT_UNKNOWN, "Որոշ տողերում ԱԱՀ-ի ներառումը հայտնի չէ. մաքուր վաճառքը հաշվված է առանց ուղղման"),
-        Map.entry(KpiFlags.COGS_MISSING, "Որոշ ապրանքների ինքնարժեքը բացակայում է. համախառն շահույթը մասնակի է"),
+        Map.entry(KpiFlags.COGS_MISSING, "Որոշ ապրանքների ինքնարժեքը բացակայում է. համախառն շահույթը մասնակի է, իսկ ծածկույթը (contribution)՝ թերագնահատված"),
         Map.entry(KpiFlags.NO_INVENTORY_SNAPSHOT, "Պահեստի մնացորդ չի ներմուծվել. պաշարի օրերը հասանելի չեն"),
         Map.entry(KpiFlags.LOW_VELOCITY_SAMPLE, "Վաճառքի օրերը 14-ից պակաս են. արագության գնահատականը թույլ է"),
         Map.entry(KpiFlags.NO_MARKETING_DATA, "Գովազդի ծախս չի ներմուծվել. ծածկույթը հաշվված է առանց մարքեթինգի"),
@@ -29,7 +29,8 @@ final class ReportLabels {
         Map.entry(KpiFlags.NEGATIVE_STOCK, "Պահեստում բացասական մնացորդ կա (հաշվառման սխալ). հաշվվել է որպես 0"),
         Map.entry(KpiFlags.MIXED_CURRENCY, "Այլ արժույթով տողերը կամ գովազդի ծախսը չեն ներառվել ընդհանուր գումարներում"),
         Map.entry(KpiFlags.RETURN_COST_ESTIMATED, "Առանց ինքնարժեքի վերադարձները գնահատվել են ապրանքի միջին ինքնարժեքով (ենթադրություն)"),
-        Map.entry(KpiFlags.SKU_MAPPING_UNCLEAR, "Ապրանքը կա միայն վաճառքում կամ միայն մնացորդում. հնարավոր է՝ կոդը փոխվել է")
+        Map.entry(KpiFlags.SKU_MAPPING_UNCLEAR, "Ապրանքը կա միայն վաճառքում կամ միայն մնացորդում. հնարավոր է՝ կոդը փոխվել է"),
+        Map.entry(KpiFlags.DATA_NOT_COVERING_PERIOD, "Վաճառքի տվյալները չեն ծածկում ամբողջ շրջանը. արագությունը հաշվված է միայն ծածկված օրերով")
     );
 
     static final Map<String, String> ISSUE_CODES = Map.ofEntries(

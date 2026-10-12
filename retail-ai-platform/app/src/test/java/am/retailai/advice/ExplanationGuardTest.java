@@ -111,7 +111,7 @@ class ExplanationGuardTest {
     void requiredDisclosures_confidenceNeedsDataAssumptionsAndProof_areChecked() {
         // C45
         var needsData = new Recommendation(RecommendationType.RESTOCK, "B-1", "Shirt", 1, Confidence.LOW,
-            Recommendation.Status.NEEDS_DATA, new LinkedHashMap<>(), List.of("variable_cost_per_order"), List.of("fresh_data"), Set.of(),
+            Recommendation.Status.NEEDS_DATA, new LinkedHashMap<>(), List.of("variable_cost_per_unit"), List.of("fresh_data"), Set.of(),
             "warehouse", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), LocalDate.of(2026, 9, 30), false);
         assertThat(guard.checkAll("Ստուգել համալրումը։ Ենթադրություն կա։ Վստահությունը ցածր է։", needsData).reasons())
             .anySatisfy(x -> assertThat(x).contains("NEEDS_DATA"));

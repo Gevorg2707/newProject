@@ -8,7 +8,7 @@ import java.math.BigDecimal;
  */
 public record KpiSettings(
     BigDecimal vatRate,               // RA standard VAT rate 20% (ՀՀ ԱԱՀ-ի մասին օրենք); tenant may be non-payer
-    BigDecimal variableCostPerOrder,  // delivery + acquiring + returns reserve, per sale line; assumption until confirmed
+    BigDecimal variableCostPerUnit,   // delivery + acquiring + returns reserve per unit sold (founder example: 2,000 AMD/unit); assumption until confirmed
     boolean formulasConfirmed,        // accountant signed off
     int slowMoverDays                 // threshold for "slow mover"
 ) {

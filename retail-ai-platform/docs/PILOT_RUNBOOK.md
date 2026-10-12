@@ -22,6 +22,7 @@ $J --import.run=true --tenant=<id> --file=ameria_2026-09.sta                --ma
 # 3. Weekly report
 $J --report.run=true --tenant=<id> --from=2026-09-01 --to=2026-09-30 --out=report.xlsx [--variable-cost=2000 --formulas-confirmed=true]
 #    --vat-rate is a fraction (0.20 = 20%, 0 for a non-payer); the default is 0.20
+#    --variable-cost is per unit sold (delivery + card fee + returns reserve), an assumption until the accountant confirms
 
 # 4. Retention: empty the stored original rows older than N days (typed data and the report stay)
 $J --purge-raw=30 --tenant=<id>

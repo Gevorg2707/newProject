@@ -47,7 +47,7 @@ public class ReportCommand implements ApplicationRunner {
         }
         return new KpiSettings(
             vat,
-            new BigDecimal(opt(args, "variable-cost", d.variableCostPerOrder().toPlainString())),
+            new BigDecimal(opt(args, "variable-cost", d.variableCostPerUnit().toPlainString())),
             Boolean.parseBoolean(opt(args, "formulas-confirmed", "false")),
             Integer.parseInt(opt(args, "slow-mover-days", String.valueOf(d.slowMoverDays()))));
     }

@@ -59,9 +59,12 @@ class KpiServiceIT {
 
         // net = (70,000 − 5,000 − 35,000) / 1.2 = 25,000.00
         assertThat(r.netSales()).isEqualByComparingTo("25000.00");
-        assertThat(r.grossSales()).isEqualByComparingTo("70000.00");
-        assertThat(r.discounts()).isEqualByComparingTo("5000.00");
+        // C64: every component on the same (ex-VAT) basis, so gross − discounts − returns = net (to the cent)
+        assertThat(r.grossSales()).isEqualByComparingTo("58333.33");   // 70,000 / 1.2
+        assertThat(r.discounts()).isEqualByComparingTo("4166.67");     // 5,000 / 1.2
         assertThat(r.returns()).isEqualByComparingTo("29166.67");      // 35,000 / 1.2 rounded HALF_UP
+        assertThat(r.grossSales().subtract(r.discounts()).subtract(r.returns()))
+            .isCloseTo(r.netSales(), org.assertj.core.data.Offset.offset(new BigDecimal("0.02")));
         assertThat(r.cogs()).isEqualByComparingTo("22000.00");         // 44,000 − 22,000
         assertThat(r.grossProfit()).isEqualByComparingTo("3000.00");   // 25,000 − 22,000
         assertThat(r.cogsCoverage()).isEqualByComparingTo("1.0000");
@@ -143,7 +146,7 @@ class KpiServiceIT {
 
         assertThat(r.grossProfit()).isEqualByComparingTo("14000.00");
         assertThat(r.marketingSpend()).isEqualByComparingTo("4000.00");
-        assertThat(r.variableCosts()).isEqualByComparingTo("2000.00");
+        assertThat(r.variableCosts()).isEqualByComparingTo("2000.00");     // 1 unit × 2,000
         assertThat(r.contribution()).isEqualByComparingTo("8000.00");   // 14,000 − 2,000 − 4,000
         assertThat(r.flags()).doesNotContain(KpiFlags.FORMULAS_NOT_CONFIRMED, KpiFlags.NO_MARKETING_DATA);
         assertThat(r.flags()).contains(KpiFlags.VARIABLE_COSTS_ASSUMED);
@@ -299,6 +302,67 @@ class KpiServiceIT {
         assertThat(shirt.onHand()).isEqualByComparingTo("20");
         assertThat(shirt.unitsSold()).isEqualByComparingTo("30");
         assertThat(shirt.flags()).doesNotContain(KpiFlags.SKU_MAPPING_UNCLEAR);
+    }
+
+    @Test
+    void variableCost_isPerUnitSold_asInTheFoundersExample() {
+        // C65: it was per sale line in contribution but per unit in the ad test
+        UUID p = product("A-1045", "Shirt");
+        sale("Հ-1", "2026-09-10", "SALE", p, "A-1045", "3", "108000", "0", "66000", false);
+
+        KpiReport r = kpi.compute(tenant, from, to, new KpiSettings(new BigDecimal("0.20"), new BigDecimal("2000"), true, 90));
+
+        assertThat(r.variableCosts()).isEqualByComparingTo("6000.00");
+    }
+
+    @Test
+    void skuSoldOnFewDays_isALowVelocitySample_evenIfTheShopSellsDaily() {
+        // C48: the flag used the shop-wide count of sales days
+        UUID a = product("A-1045", "Shirt");
+        UUID b = product("B-2001", "Jeans");
+        for (int d = 1; d <= 30; d++) sale("Հ-" + d, "2026-09-%02d".formatted(d), "SALE", a, "A-1045", "1", "36000", "0", "22000", false);
+        sale("Հ-B", "2026-09-15", "SALE", b, "B-2001", "10", "480000", "0", "290000", false);
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(sku(r, "B-2001").flags()).contains(KpiFlags.LOW_VELOCITY_SAMPLE);
+        assertThat(sku(r, "A-1045").flags()).doesNotContain(KpiFlags.LOW_VELOCITY_SAMPLE);
+    }
+
+    @Test
+    void velocity_usesOnlyTheDaysTheDataCovers_andTheGapIsFlagged() {
+        // C49: days after the last imported sale counted as zero-sales days
+        UUID p = product("A-1045", "Shirt");
+        for (int d = 1; d <= 15; d++) sale("Հ-" + d, "2026-09-%02d".formatted(d), "SALE", p, "A-1045", "2", "72000", "0", "44000", false);
+        snapshot(p, "A-1045", "Main", "2026-09-30", "20");
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(sku(r, "A-1045").dailyVelocity()).isEqualByComparingTo("2.000");   // 30 units / 15 covered days
+        assertThat(sku(r, "A-1045").daysOfStock()).isEqualByComparingTo("10");
+        assertThat(r.flags()).contains(KpiFlags.DATA_NOT_COVERING_PERIOD);
+    }
+
+    @Test
+    void daysOfStock_isComparedWithThresholdsBeforeRounding() {
+        // C85: 13.96 was rounded to 14.0 and missed "below 14"; 90.04 to 90.0 and missed "above 90"
+        UUID a = product("A-1045", "Shirt");
+        UUID b = product("B-2001", "Jeans");
+        for (int d = 1; d <= 30; d++) {
+            sale("Հ-" + d, "2026-09-%02d".formatted(d), "SALE", a, "A-1045", "1", "36000", "0", "22000", false);
+            sale("Ջ-" + d, "2026-09-%02d".formatted(d), "SALE", b, "B-2001", "1", "48000", "0", "29000", false);
+        }
+        snapshot(a, "A-1045", "Main", "2026-09-30", "13.96");
+        snapshot(b, "B-2001", "Main", "2026-09-30", "90.04");
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(sku(r, "A-1045").daysOfStock()).isLessThan(new BigDecimal("14"));
+        assertThat(sku(r, "B-2001").slowMover()).isTrue();
+    }
+
+    private static SkuKpi sku(KpiReport r, String code) {
+        return r.skus().stream().filter(x -> x.skuCode().equals(code)).findFirst().orElseThrow();
     }
 
     // ---- helpers ----

@@ -28,7 +28,7 @@ public class TemplateExplanationProvider implements ExplanationProvider {
         Map.entry("cogs", "որոշ ապրանքների ինքնարժեքը"),
         Map.entry("formula_confirmation", "բանաձևերի հաստատումը հաշվապահի կողմից"),
         Map.entry("incrementality_unknown_until_experiment", "հավելյալ վաճառքի ապացույց (հնարավոր է միայն փորձարկմամբ)"),
-        Map.entry("variable_cost_per_order", "պատվերի փոփոխական ծախսը"));
+        Map.entry("variable_cost_per_unit", "մեկ հատի փոփոխական ծախսը (առաքում, միջնորդավճար, վերադարձ)"));
 
     private static final Map<Confidence, String> CONF = Map.of(
         Confidence.HIGH, "բարձր", Confidence.MEDIUM, "միջին", Confidence.LOW, "ցածր");
@@ -45,7 +45,7 @@ public class TemplateExplanationProvider implements ExplanationProvider {
                 + dec(f.get("daily_velocity")) + " հատ/օր, պաշարը կբավարարի մոտ " + dec(f.get("days_of_stock"))
                 + " օր։ Առաջարկ՝ ստուգել համալրման անհրաժեշտությունը։";
             case AD_TEST -> "Ապրանք " + sku + "․ մաքուր գինը մոտ " + money(f.get("net_price_per_unit")) + " դրամ/հատ է, ինքնարժեքը՝ "
-                + money(f.get("cogs_per_unit")) + ", պատվերի փոփոխական ծախսը՝ " + money(f.get("variable_cost_per_order"))
+                + money(f.get("cogs_per_unit")) + ", մեկ հատի փոփոխական ծախսը՝ " + money(f.get("variable_cost_per_unit"))
                 + "։ Մինչև գովազդը մնում է մոտ " + money(f.get("max_acquisition_cost"))
                 + " դրամ/հատ։ Առաջարկ՝ սահմանափակ փորձարկում, որտեղ մեկ վաճառքի ձեռքբերման արժեքը չգերազանցի "
                 + money(f.get("max_acquisition_cost")) + " դրամը։ Նշագրված պատվերները դեռ չեն ապացուցում հավելյալ վաճառք։";

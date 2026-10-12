@@ -14,5 +14,6 @@ public enum KpiFlags {
     NEGATIVE_STOCK,           // a warehouse reports a negative balance (posting error); it is counted as 0, not netted
     MIXED_CURRENCY,           // lines or ad spend in another currency were left out of the totals
     RETURN_COST_ESTIMATED,    // a return without cost was costed at the SKU's average sale cost in the period (assumption)
-    SKU_MAPPING_UNCLEAR       // the product appears only in sales or only in stock: possibly a renamed code (merge with --product.merge)
+    SKU_MAPPING_UNCLEAR,      // the product appears only in sales or only in stock: possibly a renamed code (merge with --product.merge)
+    DATA_NOT_COVERING_PERIOD  // imported sales start after the period start or end before its end (or today): velocity uses covered days
 }

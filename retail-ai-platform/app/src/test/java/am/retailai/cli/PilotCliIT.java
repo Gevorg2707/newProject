@@ -53,7 +53,8 @@ class PilotCliIT {
 
     /**
      * Money end to end with the shipped mapping. Expected values were computed from the xlsx cells directly, not by this
-     * code: gross = sum(amount + discount) of sales, net = (sum(amount) of sales - sum(amount) of returns) / 1.2,
+     * code: gross = sum(amount + discount) of sales / 1.2 (same ex-VAT basis as net), discounts = sum(discount) / 1.2,
+     * net = (sum(amount) of sales - sum(amount) of returns) / 1.2,
      * COGS = sales cost - returned cost (findings C57, C58: double VAT and double discount went unnoticed before).
      */
     @Test
@@ -66,8 +67,8 @@ class PilotCliIT {
         KpiReport k = kpi.compute(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());
 
         BigDecimal cent = new BigDecimal("0.02");
-        assertThat(k.grossSales()).isCloseTo(new BigDecimal("5595000.00"), within(cent));
-        assertThat(k.discounts()).isCloseTo(new BigDecimal("77000.00"), within(cent));
+        assertThat(k.grossSales()).isCloseTo(new BigDecimal("4662500.00"), within(cent));
+        assertThat(k.discounts()).isCloseTo(new BigDecimal("64166.67"), within(cent));
         assertThat(k.returns()).isCloseTo(new BigDecimal("72916.67"), within(cent));
         assertThat(k.netSales()).isCloseTo(new BigDecimal("4525416.67"), within(cent));
         assertThat(k.cogs()).isCloseTo(new BigDecimal("3365800.00"), within(cent));

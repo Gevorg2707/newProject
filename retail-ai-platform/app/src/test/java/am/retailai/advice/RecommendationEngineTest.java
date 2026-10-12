@@ -46,9 +46,9 @@ class RecommendationEngineTest {
         assertThat(r.facts())
             .containsEntry("net_price_per_unit", new BigDecimal("35000.00"))
             .containsEntry("cogs_per_unit", new BigDecimal("22000.00"))
-            .containsEntry("variable_cost_per_order", new BigDecimal("2000"))
+            .containsEntry("variable_cost_per_unit", new BigDecimal("2000"))
             .containsEntry("max_acquisition_cost", new BigDecimal("11000.00"));
-        assertThat(r.assumptions()).contains("variable_cost_per_order");
+        assertThat(r.assumptions()).contains("variable_cost_per_unit");
         assertThat(r.experimentCompleted()).isFalse();
     }
 

@@ -39,7 +39,7 @@ public class RecommendationEngine {
                 var facts = new LinkedHashMap<String, BigDecimal>();
                 facts.put("on_hand", x.onHand());
                 facts.put("daily_velocity", x.dailyVelocity());
-                facts.put("days_of_stock", x.daysOfStock());
+                facts.put("days_of_stock", x.daysOfStock().setScale(1, RoundingMode.HALF_UP));
                 all.add(build(RecommendationType.RESTOCK, x, 1, facts, List.of(), List.of("supplier_lead_time"),
                     "warehouse", k, dataAsOf, stale, false));
             }
@@ -48,7 +48,7 @@ public class RecommendationEngine {
                 var facts = new LinkedHashMap<String, BigDecimal>();
                 facts.put("on_hand", x.onHand());
                 facts.put("daily_velocity", x.dailyVelocity());
-                if (x.daysOfStock() != null) facts.put("days_of_stock", x.daysOfStock());
+                if (x.daysOfStock() != null) facts.put("days_of_stock", x.daysOfStock().setScale(1, RoundingMode.HALF_UP));
                 if (x.cogs() != null && !x.flags().contains(KpiFlags.COGS_MISSING) && netUnits.signum() > 0 && x.onHand() != null) {
                     BigDecimal unitCost = x.cogs().divide(netUnits, 10, RoundingMode.HALF_UP);
                     facts.put("stock_value_at_cost", unitCost.multiply(x.onHand()).setScale(2, RoundingMode.HALF_UP));
@@ -62,15 +62,15 @@ public class RecommendationEngine {
                 && x.onHand() != null && x.onHand().signum() > 0) {
                 BigDecimal netPrice = x.netSales().divide(netUnits, 2, RoundingMode.HALF_UP);
                 BigDecimal cogsUnit = x.cogs().divide(netUnits, 2, RoundingMode.HALF_UP);
-                BigDecimal margin = netPrice.subtract(cogsUnit).subtract(costs.variableCostPerOrder());
+                BigDecimal margin = netPrice.subtract(cogsUnit).subtract(costs.variableCostPerUnit());
                 if (margin.signum() > 0 && (bestAdGp == null || x.grossProfit().compareTo(bestAdGp) > 0)) {
                     var facts = new LinkedHashMap<String, BigDecimal>();
                     facts.put("net_price_per_unit", netPrice);
                     facts.put("cogs_per_unit", cogsUnit);
-                    facts.put("variable_cost_per_order", costs.variableCostPerOrder());
+                    facts.put("variable_cost_per_unit", costs.variableCostPerUnit());
                     facts.put("max_acquisition_cost", margin.setScale(2, RoundingMode.HALF_UP));
                     facts.put("on_hand", x.onHand());
-                    bestAdTest = build(RecommendationType.AD_TEST, x, 2, facts, List.of("variable_cost_per_order"),
+                    bestAdTest = build(RecommendationType.AD_TEST, x, 2, facts, List.of("variable_cost_per_unit"),
                         List.of("incrementality_unknown_until_experiment"), "marketer", k, dataAsOf, stale, false);
                     bestAdGp = x.grossProfit();
                 }

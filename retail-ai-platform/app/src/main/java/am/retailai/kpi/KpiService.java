@@ -24,6 +24,8 @@ public class KpiService {
 
     private static final int SCALE = 2;
     private static final int CALC_SCALE = 10;
+    /** ASSUMPTION: a SKU velocity from fewer selling days than this is a weak sample. */
+    private static final int MIN_SKU_SELLING_DAYS = 3;
 
     private final TenantTransactions tenantTx;
 
@@ -117,6 +119,7 @@ public class KpiService {
             Map<String, SkuAcc> perSku = new LinkedHashMap<>();
             BigDecimal grossSales = BigDecimal.ZERO, discounts = BigDecimal.ZERO, returns = BigDecimal.ZERO;
             BigDecimal turnover = BigDecimal.ZERO, turnoverWithCogs = BigDecimal.ZERO;   // |sales| + |returns|, for coverage
+            BigDecimal unitsSoldTotal = BigDecimal.ZERO;
             int saleLines = 0, returnLines = 0;
             BigDecimal vatDivisor = BigDecimal.ONE.add(settings.vatRate());
 
@@ -154,8 +157,11 @@ public class KpiService {
                     if (hasCogs) { acc.cogs = acc.cogs.subtract(cogs); acc.netSalesWithCogs = acc.netSalesWithCogs.subtract(netGroup); acc.anyCogs = true; }
                     else { acc.uncostedReturnNet = acc.uncostedReturnNet.add(netGroup); acc.uncostedReturnQty = acc.uncostedReturnQty.add(qty); }
                 } else {
-                    grossSales = grossSales.add(gross);
-                    discounts = discounts.add(discount);
+                    // Same basis as net sales (ex-VAT when VAT is included), so gross − discounts − returns = net (C64).
+                    boolean exVat = Boolean.TRUE.equals(vatIncluded);
+                    grossSales = grossSales.add(exVat ? gross.divide(vatDivisor, CALC_SCALE, RoundingMode.HALF_UP) : gross);
+                    discounts = discounts.add(exVat ? discount.divide(vatDivisor, CALC_SCALE, RoundingMode.HALF_UP) : discount);
+                    unitsSoldTotal = unitsSoldTotal.add(qty);
                     saleLines += lines;
                     acc.unitsSold = acc.unitsSold.add(qty);
                     acc.netSales = acc.netSales.add(netGroup);
@@ -177,7 +183,34 @@ public class KpiService {
                 }
             }
 
-            long periodDays = Math.max(1, ChronoUnit.DAYS.between(from, to) + 1);
+            // Velocity uses only the days the imported sales cover (C49): from the first to the last sale of all imports,
+            // never past today. Days outside that range are a source gap, not zero demand.
+            Map<String, Object> span = jdbc.sql("""
+                    SELECT min((occurred_at AT TIME ZONE 'Asia/Yerevan')::date) AS first, max((occurred_at AT TIME ZONE 'Asia/Yerevan')::date) AS last
+                    FROM sale_lines
+                    """).query().singleRow();
+            LocalDate coveredFrom = from, coveredTo = to;
+            LocalDate today = LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Yerevan")));
+            if (span.get("first") != null) {
+                LocalDate first = ((java.sql.Date) span.get("first")).toLocalDate();
+                LocalDate last = ((java.sql.Date) span.get("last")).toLocalDate();
+                if (first.isAfter(coveredFrom)) coveredFrom = first;
+                if (last.isBefore(coveredTo)) coveredTo = last;
+            }
+            if (today.isBefore(coveredTo)) coveredTo = today;
+            if (coveredTo.isBefore(coveredFrom)) coveredTo = coveredFrom;
+            if (!coveredFrom.equals(from) || !coveredTo.equals(to)) flags.add(KpiFlags.DATA_NOT_COVERING_PERIOD);
+            long periodDays = Math.max(1, ChronoUnit.DAYS.between(coveredFrom, coveredTo) + 1);
+
+            // A velocity from a SKU's own few selling days is a weak sample even when the shop sells daily (C48).
+            Map<String, Integer> skuDays = new java.util.HashMap<>();
+            jdbc.sql("""
+                    SELECT p.sku_code, count(DISTINCT (sl.occurred_at AT TIME ZONE 'Asia/Yerevan')::date) AS days
+                    FROM sale_lines sl JOIN products p ON p.id = sl.product_id
+                    WHERE sl.occurred_at >= :from AND sl.occurred_at < :to AND sl.currency = :cur AND sl.operation_type = 'SALE'
+                    GROUP BY p.sku_code
+                    """).param("from", periodFrom).param("to", periodTo).param("cur", currency).query().listOfRows()
+                .forEach(row -> skuDays.put((String) row.get("sku_code"), ((Number) row.get("days")).intValue()));
             if (daysWithSales < 14) flags.add(KpiFlags.LOW_VELOCITY_SAMPLE);
 
             // Stock without any sale in the period is the worst slow mover: it must be listed too.
@@ -212,12 +245,14 @@ public class KpiService {
                 if (stock == null) {
                     a.flags.add(KpiFlags.NO_INVENTORY_SNAPSHOT);
                 } else if (velocity.signum() > 0) {
-                    daysOfStock = stock.divide(velocity, 1, RoundingMode.HALF_UP);
+                    // Unrounded, so thresholds compare the real value (C85); reports round for display.
+                    daysOfStock = stock.divide(velocity, 4, RoundingMode.HALF_UP);
                     slow = stock.signum() > 0 && daysOfStock.compareTo(BigDecimal.valueOf(settings.slowMoverDays())) > 0;
                 } else {
                     slow = stock.signum() > 0; // stock but no net sales in period
                 }
-                if (daysWithSales < 14) a.flags.add(KpiFlags.LOW_VELOCITY_SAMPLE);
+                int ownDays = skuDays.getOrDefault(a.sku, 0);
+                if (daysWithSales < 14 || (ownDays > 0 && ownDays < MIN_SKU_SELLING_DAYS)) a.flags.add(KpiFlags.LOW_VELOCITY_SAMPLE);
 
                 skus.add(new SkuKpi(a.sku, a.name, a.unitsSold, a.unitsReturned, r2(a.netSales), r2(skuCogs), r2(skuGp),
                     stock, velocity.setScale(3, RoundingMode.HALF_UP), daysOfStock, slow, Set.copyOf(a.flags)));
@@ -226,7 +261,7 @@ public class KpiService {
             BigDecimal grossProfit = netWithCogs.subtract(cogsTotal);
             // Share of sales and returns turnover with a real cost: 0..1 by construction, never clamped.
             BigDecimal coverage = turnover.signum() == 0 ? BigDecimal.ZERO : turnoverWithCogs.divide(turnover, 4, RoundingMode.HALF_UP);
-            BigDecimal variableCosts = settings.variableCostPerOrder().multiply(BigDecimal.valueOf(saleLines));
+            BigDecimal variableCosts = settings.variableCostPerUnit().multiply(unitsSoldTotal);
             flags.add(KpiFlags.VARIABLE_COSTS_ASSUMED);
             BigDecimal contribution = grossProfit.subtract(variableCosts).subtract(spend);
 
