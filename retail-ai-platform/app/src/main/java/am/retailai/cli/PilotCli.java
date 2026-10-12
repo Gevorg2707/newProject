@@ -64,7 +64,7 @@ public class PilotCli {
             Map<String, Integer> c = new java.util.LinkedHashMap<>();
             for (String t : List.of("recommendation_decisions", "recommendations", "reconciliation_matches", "validation_issues",
                 "bank_transactions", "campaign_daily", "inventory_snapshots", "sale_lines", "product_aliases", "products",
-                "column_mappings", "tenant_own_accounts", "source_records", "audit_events", "import_batches")) {
+                "column_mappings", "tenant_own_accounts", "batch_rows", "source_records", "audit_events", "import_batches")) {
                 c.put(t, j.sql("DELETE FROM " + t).update());   // RLS limits every DELETE to this tenant
             }
             return c;
@@ -118,6 +118,29 @@ public class PilotCli {
     private static UUID productId(org.springframework.jdbc.core.simple.JdbcClient j, String code) {
         return j.sql("SELECT id FROM products WHERE sku_code = :c").param("c", code).query(UUID.class).optional()
             .orElseThrow(() -> new IllegalArgumentException("Product '" + code + "' not found"));
+    }
+
+    /**
+     * A document cancelled or deleted in the source after it was imported: its sale lines are removed and its source
+     * records marked 'voided'. Use it after an import reports document_missing_in_reexport and the client confirms.
+     */
+    public int voidDocument(TenantId tenant, am.retailai.imports.SourceSystem source, String documentNumber, String by, PrintStream out) {
+        int removed = tenantTx.inTenant(tenant, j -> {
+            List<String> ids = j.sql("""
+                    DELETE FROM sale_lines WHERE source_system = :s AND document_number = :doc RETURNING source_record_id
+                    """).param("s", source.name()).param("doc", documentNumber).query(String.class).list();
+            if (ids.isEmpty()) throw new IllegalArgumentException("Document '" + documentNumber + "' not found in " + source);
+            j.sql("UPDATE source_records SET status = 'voided' WHERE source_system = :s AND source_record_id IN (:ids)")
+                .param("s", source.name()).param("ids", ids).update();
+            j.sql("""
+                    INSERT INTO audit_events (tenant_id, actor, action, entity_type, entity_id, details)
+                    VALUES (:t, :by, 'document.void', 'document', :doc, jsonb_build_object('source', :s, 'lines', :n))
+                    """).param("t", tenant.value()).param("by", by).param("doc", documentNumber).param("s", source.name())
+                .param("n", ids.size()).update();
+            return ids.size();
+        });
+        out.println("Voided document " + documentNumber + " (" + source + "): " + removed + " sale lines removed");
+        return removed;
     }
 
     /** Registers an own account so statement lines mentioning it are treated as internal transfers. */

@@ -26,6 +26,12 @@ $J --purge-raw=30 --tenant=<id>
 
 # 5. Client leaves or asks for deletion: every row of this client, then the client. The exact name is the confirmation.
 $J --tenant.delete=<id> --confirm="Shop name"
+
+# 6. One product under two codes (flag SKU_MAPPING_UNCLEAR): merge the old code into the current one
+$J --product.merge=A1045 --into=A-1045 --tenant=<id>
+
+# 7. A document cancelled in HC after it was imported (warning document_missing_in_reexport), once the client confirms
+$J --document.void=Հ-00123 --source=HC_TRADE --tenant=<id> --by=gevorg
 ```
 
 ## Per client, before the first import
@@ -43,6 +49,9 @@ $J --tenant.delete=<id> --confirm="Shop name"
   Fix the mapping and run the same import again: the batch is re-committed. Fix the file: import the new file.
 - `updated` at commit: the source restated a row (same identity, new content). The report uses the latest version.
 - `warning:new_sku` on the first import is expected. On later imports it means a new or renamed product.
+- `line_superseded`: a re-exported document no longer has this line (e.g. its SKU was corrected); the old line was removed.
+- `document_missing_in_reexport`: a stored document dated inside the new file's period is not in it. Either the export is
+  partial (other store, filter) or the document was cancelled. Ask the client; if cancelled, use `--document.void`.
 - `updated` > 0 on ad files is normal: platforms restate the last ~28 days.
 
 ## File refused or rows rejected at import

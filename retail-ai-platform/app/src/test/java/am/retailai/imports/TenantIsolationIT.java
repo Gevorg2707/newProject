@@ -59,4 +59,26 @@ class TenantIsolationIT {
         UUID id = jdbc.sql("INSERT INTO tenants (name) VALUES (:n) RETURNING id").param("n", name).query(UUID.class).single();
         return new TenantId(id);
     }
+
+    @Test
+    void everyTableWithATenantColumn_hasForcedRowLevelSecurity() {
+        List<String> unprotected = jdbc.sql("""
+                SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+                WHERE n.nspname = current_schema() AND c.relkind = 'r'
+                  AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped)
+                  AND NOT (c.relrowsecurity AND c.relforcerowsecurity)
+                """).query(String.class).list();
+        assertThat(unprotected).isEmpty();
+    }
+
+    @Test
+    void tenantSetting_doesNotOutliveItsTransaction_onPooledConnections() {
+        // C54: set_config(..., false) would leak the tenant to the next user of the pooled connection
+        TenantId a = newTenant("Leak A");
+        for (int i = 0; i < 30; i++) {
+            tenantTx.inTenant(a, j -> j.sql("SELECT 1").query(Integer.class).single());
+            String leftover = jdbc.sql("SELECT coalesce(current_setting('app.tenant_id', true), '')").query(String.class).single();
+            assertThat(leftover).isEmpty();
+        }
+    }
 }

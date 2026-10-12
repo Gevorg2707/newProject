@@ -144,6 +144,10 @@ public class ImportService {
                 if (outcome.isPresent()) {
                     if (outcome.get()) inserted++; else updated++;
                 }
+                jdbc.sql("""
+                        INSERT INTO batch_rows (tenant_id, import_batch_id, source_record_id) VALUES (:t, :b, :rid)
+                        ON CONFLICT DO NOTHING
+                        """).param("t", tenant.value()).param("b", batchId).param("rid", recordId).update();
             }
 
             jdbc.sql("UPDATE import_batches SET status = 'parsed', row_count = :rows, updated_at = now() WHERE id = :id")

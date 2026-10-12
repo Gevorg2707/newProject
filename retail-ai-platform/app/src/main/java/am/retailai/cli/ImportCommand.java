@@ -17,6 +17,7 @@ import java.nio.file.Path;
  *   --tenant.delete=<uuid> --confirm="<exact client name>"   → deletes every row of that client
  *   --purge-raw=<days> --tenant=<uuid>                         → empties original rows of batches older than <days>
  *   --product.merge=<old code> --into=<code> --tenant=<uuid>    → one product under two codes becomes one
+ *   --document.void=<number> --source=HC_TRADE --tenant=<uuid> --by=name → removes a document cancelled in the source
  *   --recommendation.decide=<id> --decision=ACCEPTED|REJECTED|NEED_DATA --tenant=<uuid> --by=name [--comment="..."]
  * Report generation lives in ReportCommand (--report.run=true).
  * Without these options the runner does nothing, so it is safe to keep it always registered.
@@ -46,6 +47,10 @@ public class ImportCommand implements ApplicationRunner {
         if (args.containsOption("product.merge")) {
             cli.mergeProducts(TenantId.of(required(args, "tenant")), args.getOptionValues("product.merge").getFirst(),
                 required(args, "into"), System.out);
+        }
+        if (args.containsOption("document.void")) {
+            cli.voidDocument(TenantId.of(required(args, "tenant")), am.retailai.imports.SourceSystem.valueOf(required(args, "source")),
+                args.getOptionValues("document.void").getFirst(), required(args, "by"), System.out);
         }
         if (args.containsOption("recommendation.decide")) {
             java.util.UUID id = java.util.UUID.fromString(args.getOptionValues("recommendation.decide").getFirst());

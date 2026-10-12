@@ -78,6 +78,9 @@ public class CommitService {
                     case UNCHANGED -> present++;
                 }
             }
+            if (mapping.targetEntity() == TargetEntity.SALE_LINE && mapping.headerFor("document_number") != null) {
+                issues.addAll(compareWithReexport(jdbc, batchId, sourceSystem));
+            }
 
             for (ValidationIssue i : issues) {
                 jdbc.sql("""
@@ -96,6 +99,48 @@ public class CommitService {
                     """).param("id", batchId).update();
             return report;
         });
+    }
+
+    /**
+     * A sales file re-exports documents that may already be stored. A document in this file is the source's current
+     * version of it: its stored lines that the file no longer has (e.g. a corrected SKU) are superseded. A stored document
+     * dated inside this file's period but absent from it may have been voided, or the export may be partial: it is
+     * reported, never deleted automatically (PilotCli.voidDocument removes it once confirmed).
+     */
+    private List<ValidationIssue> compareWithReexport(JdbcClient jdbc, UUID batchId, String source) {
+        List<ValidationIssue> out = new ArrayList<>();
+        List<Map<String, Object>> superseded = jdbc.sql("""
+                WITH file_docs AS (
+                    SELECT DISTINCT sl.document_number FROM sale_lines sl
+                    JOIN batch_rows br ON br.import_batch_id = :b AND br.source_record_id = sl.source_record_id
+                    WHERE sl.source_system = :s AND sl.document_number IS NOT NULL)
+                DELETE FROM sale_lines sl USING file_docs fd
+                WHERE sl.source_system = :s AND sl.document_number = fd.document_number
+                  AND NOT EXISTS (SELECT 1 FROM batch_rows br WHERE br.import_batch_id = :b AND br.source_record_id = sl.source_record_id)
+                RETURNING sl.source_record_id, sl.document_number
+                """).param("b", batchId).param("s", source).query().listOfRows();
+        for (Map<String, Object> row : superseded) {
+            String rid = (String) row.get("source_record_id");
+            jdbc.sql("UPDATE source_records SET status = 'superseded' WHERE source_system = :s AND source_record_id = :r")
+                .param("s", source).param("r", rid).update();
+            out.add(ValidationIssue.warning(rid, 0, "line_superseded", "document_number",
+                "Document " + row.get("document_number") + " was re-exported without this line; the stored line was removed"));
+        }
+        jdbc.sql("""
+                WITH file_lines AS (
+                    SELECT sl.document_number, (sl.occurred_at AT TIME ZONE 'Asia/Yerevan')::date AS d FROM sale_lines sl
+                    JOIN batch_rows br ON br.import_batch_id = :b AND br.source_record_id = sl.source_record_id
+                    WHERE sl.source_system = :s)
+                SELECT sl.document_number, min((sl.occurred_at AT TIME ZONE 'Asia/Yerevan')::date) AS d FROM sale_lines sl
+                WHERE sl.source_system = :s AND sl.document_number IS NOT NULL
+                  AND (sl.occurred_at AT TIME ZONE 'Asia/Yerevan')::date BETWEEN (SELECT min(d) FROM file_lines) AND (SELECT max(d) FROM file_lines)
+                  AND sl.document_number NOT IN (SELECT document_number FROM file_lines WHERE document_number IS NOT NULL)
+                GROUP BY sl.document_number ORDER BY sl.document_number
+                """).param("b", batchId).param("s", source).query().listOfRows()
+            .forEach(row -> out.add(ValidationIssue.warning(null, 0, "document_missing_in_reexport", "document_number",
+                "Document " + row.get("document_number") + " (" + row.get("d") + ") was imported earlier but is not in this file"
+                    + " although its date is inside the file's period. If it was cancelled, remove it with --document.void")));
+        return out;
     }
 
     // ---- entity writers -------------------------------------------------------------------------
