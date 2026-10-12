@@ -1,0 +1,1299 @@
+[
+ {
+  "document": "offer",
+  "quote": "Գնորդների անուն/հեռախոս **չենք ներմուծում**։",
+  "problem": "False. The importer saves every cell of every row, mapped or not, before any mapping is applied. If the ՀԾ export has customer name or phone columns, they are imported and kept without a time limit. The mapping only decides which fields reach the domain tables. In the README, 'PII columns are simply not mapped' means 'not mapped', not 'not imported'. Guide 01 makes the same false promise ('կկտրենք ներմուծման պահին և չենք պահի').",
+  "evidence": "app/src/main/java/am/retailai/imports/ImportService.java:74-80 inserts raw_payload = row.asMap() (all columns); V1__core_tenancy_and_import.sql:39 'raw_payload jsonb NOT NULL -- header -> cell value'; nothing deletes source_records; app/README.md 'PII columns are simply not mapped'; docs/guides/01_HC_Trade_export_HY.md 'Ինչ չպետք է ուղարկել' section.",
+  "severity": "high",
+  "replacement": "Գնորդների անուն, հեռախոս կամ հասցե մեզ պետք չեն. խնդրում ենք այդ սյունակները հեռացնել արտահանումից առաջ (առաջին արտահանման ժամանակ դա միասին ենք ստուգում)։ Եթե դրանք այնուամենայնիվ մնան ֆայլում, հաշվարկներում չեն օգտագործվում, բայց պահվում են ներմուծված ֆայլի բնօրինակ պատճենում՝ մինչև ջնջումը։ (Alternative: first change ImportService so it drops unmapped columns before writing raw_payload. Only then can the original sentence stay.)",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Գնորդների անուն, հեռախոս, հասցե մեզ պետք չեն. խնդրում ենք այդ սյունակները հանել արտահանումից առաջ (առաջին արտահանումը միասին ենք անում և դա ստուգում ենք)։ Եթե դրանք այնուամենայնիվ մնան ֆայլում, հաշվարկներում և հաշվետվությունում չեն օգտագործվում, բայց պահվում են ներմուծված տողերի բնօրինակ պատճենում, մինչև ձեր պահանջով ջնջենք։ Բանկային գործարքների աղյուսակում գործընկերների անուններն ու հաշվեհամարները պահվում են դիմակավորված (հաշվի համարից՝ միայն վերջին 4 թիվը), իսկ քաղվածքի բնօրինակ տողերը նույնպես պահվում են մինչև ջնջումը։",
+   "Գնորդների անուն, հեռախոս կամ հասցե մեզ պետք չեն և հաշվարկներում չեն օգտագործվում։ Խնդրում ենք այդ սյունակները հեռացնել արտահանումից առաջ (առաջին արտահանումը միասին ենք ստուգում)։ Եթե դրանք այնուամենայնիվ մնան ֆայլում, պահվում են միայն ներմուծված ֆայլի բնօրինակ պատճենում և ջնջվում են ձեր պահանջով՝ մյուս տվյալների հետ։ Բանկային քաղվածքի մշակված տվյալներում գործընկերների անուններն ու հաշվեհամարները դիմակավորված են (հաշվի համարից՝ միայն վերջին 4 թիվը), սակայն քաղվածքի բնօրինակ պատճենը պահվում է անփոփոխ՝ մինչև ջնջումը։",
+   "Գնորդների անուն, հեռախոս, հասցե մեզ պետք չեն. խնդրում ենք այդ սյունակները հեռացնել արտահանումից առաջ։ Եթե դրանք մնան ֆայլում, հաշվարկներում չեն օգտագործվում, բայց ներմուծված տողերի հետ պահվում են մեր բազայում՝ մինչև դրանք ձեր պահանջով ջնջելը։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Բանկային քաղվածքում գործընկերների անուններն ու հաշվեհամարները պահվում են դիմակավորված, հաշվի համարից՝ միայն վերջին 4 թիվը։",
+  "problem": "False in four ways. (1) raw_payload keeps the full statement row with no masking: the full description, any counterparty name or account columns, and for MT940 the full :25: account number. (2) The MT940 mapping uses 'account' as an id column, so the full account number appears in plain text in source_records.source_record_id, and in validation_issues when a row has a warning. (3) Registered own accounts are stored with all their digits. (4) The masking in bank_transactions.description is partial: it keeps the first 2 characters of each word longer than 3 characters, keeps words of 3 characters or fewer whole, and for counterparty account numbers keeps the FIRST 2 digits, not the last 4. 'Last 4 digits' applies only to the client's own account label (account_ref) when it is taken from the file.",
+  "evidence": "ImportService.java:74-80 (raw row stored); Mt940Parser.java:77 cells.put(\"account\", s.account); docs/samples/mappings/bank_mt940_v1.json idColumns [\"statement_ref\",\"account\",\"reference\"] + RecordIdentity.of joins id columns with '/'; PilotCli.addOwnAccount stores the full digits in tenant_own_accounts.number_fragment (the runbook registers \"1570 0123 4567 0001\"); ValueConverters.java:75-82 maskDescription; CommitService.java:223,258 maskAccount applies only to account_ref.",
+  "severity": "high",
+  "replacement": "Բանկային գործարքների նկարագրությունները վերլուծական աղյուսակներում պահվում են մասնակի դիմակավորված (երկար բառերից մնում են միայն առաջին 2 նշանները), իսկ ձեր հաշվի համարը՝ միայն վերջին 4 թվով կամ ձեր տված անվանումով։ Ներմուծված քաղվածքի բնօրինակ պատճենը (ներառյալ գործընկերների անուններն ու հաշվեհամարները) պահվում է անփոփոխ՝ մինչև ջնջումը։ (Or fix the code first: mask or drop raw_payload for BANK and drop 'account' from idColumns. Then the original promise can stand.)",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Վերլուծական աղյուսակներում բանկային գործարքի նկարագրությունը պահվում է մասնակի դիմակավորված (բառերից և համարներից մնում են միայն առաջին 2 նշանները, կարճ բառերը՝ ամբողջությամբ), իսկ ձեր հաշիվը նշվում է ձեր տված անվանումով կամ միայն վերջին 4 թվով։ Ստուգման համար ներմուծված քաղվածքի տողերը (ներառյալ գործընկերների անուններն ու հաշվեհամարները և ձեր հաշվի ամբողջական համարը) պահվում են անփոփոխ՝ միայն ձեզ հասանելի տվյալների բազայում, մինչև ջնջումը։",
+   "Բանկային քաղվածքի տողերը մեր տվյալների բազայում պահվում են ամբողջությամբ՝ ներառյալ գործընկերների անուններն ու հաշվեհամարները, մինչև դրանք ջնջենք ձեր պահանջով։ Վերլուծական աղյուսակներում գործարքների նկարագրությունները մասնակի դիմակավորված են, իսկ հաշվետվությունում ձեր հաշիվը նշվում է ձեր տված անվանումով կամ միայն վերջին 4 թվով։ Ձեր սեփական հաշիվների համարները պահում ենք ամբողջությամբ, որպեսզի ձեր հաշիվների միջև փոխանցումները չհաշվենք որպես եկամուտ։ (Preferred instead: fix the code first. For BANK, mask or drop the counterparty fields in raw_payload, remove 'account' from idColumns in bank_mt940_v1.json, and make maskDescription mask 4-digit groups too. Only then can you promise that counterparty data is stored masked.)",
+   "Բանկային գործարքների նկարագրությունները վերլուծական աղյուսակներում պահվում են մասնակի դիմակավորված, իսկ հաշիվը՝ ձեր տված անվանումով կամ միայն վերջին 4 թվանշանով։ Սակայն ներմուծված քաղվածքի տողերը (ներառյալ գործընկերների անուններն ու բոլոր հաշվեհամարները) և ձեր նշած սեփական հաշիվների համարները պահվում են ամբողջությամբ՝ առանց դիմակավորման։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Ձեր տվյալները տեսանելի են միայն ձեր հաշվին (տվյալների բազայում տեխնիկապես առանձնացված)։",
+  "problem": "Overclaim. The pilot has no client account, login or UI, so 'visible only to your account' points to something that does not exist. Row-level security only stops one tenant's queries from seeing another tenant's rows. The operator running the CLI picks any --tenant=<uuid> and sees everything, and the DB owner can switch RLS off. The `tenants` table (shop names) has no RLS. Received files and the generated XLSX reports live outside the database, on the operator's machine and mail.",
+  "evidence": "app/README.md 'No UI'; vault/00-Index/Backlog.md Phase 2 'Аккаунты, роли, UI — только после 2-го платящего клиента'; PILOT_RUNBOOK.md passes --tenant=<id> on every command; V1__core_tenancy_and_import.sql enables RLS only on import_batches/source_records/audit_events, not tenants; ReportCommand writes the XLSX to a local path.",
+  "severity": "high",
+  "replacement": "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում հաճախորդի առանձին մուտք (հաշիվ) չկա. ձեր տվյալներին հասանելիություն ունի միայն պիլոտը վարող մեր աշխատակիցը (<անուն>), իսկ հաշվետվությունը ձեզ ուղարկում ենք <համաձայնեցված ուղով>։",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում հաճախորդի առանձին մուտք (հաշիվ) չկա. ձեր ֆայլերը մշակում և հաշվետվությունը պատրաստում է պիլոտը վարող մեր աշխատակիցը (<անուն>), իսկ պատրաստի հաշվետվությունը ձեզ ենք ուղարկում <համաձայնեցված ուղով>։",
+   "Տվյալների բազայում ձեր տվյալները տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում հաճախորդի առանձին մուտք (օգտահաշիվ) չկա. ձեր ֆայլերը մշակում և հաշվետվությունը պատրաստում է միայն պիլոտը վարող մեր աշխատակիցը (<անուն>)։ Ստացված ֆայլերը և պատրաստի հաշվետվությունները պահվում են <որտեղ>, իսկ հաշվետվությունը ձեզ ուղարկում ենք <համաձայնեցված ուղով>։",
+   "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում հաճախորդի մուտք (հաշիվ) չկա. ձեր ֆայլերն ու տվյալները հասանելի են միայն պիլոտը վարող մասնագետին (<անուն>)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Պիլոտի ավարտից հետո ձեր ֆայլերը և տվյալները ջնջում ենք ձեր պահանջով։",
+  "problem": "Promises a feature that does not exist. There is no deletion command, script or runbook step. The only DELETE in the code is the reconciliation rerun. Domain tables reference import_batches/tenants/products without ON DELETE CASCADE, so removing a client takes hand-written SQL in the right order. Received files, generated reports and audit_events are not tracked anywhere. Also, Art. 5 of the RA personal data law forbids keeping identifiable data longer than needed, so deletion should be the default at the end, not only 'on request'.",
+  "evidence": "grep for delete/purge/retention under app/src/main/java finds only ReconciliationService.java:43; V2__mappings_and_domain_tables.sql: sale_lines/inventory_snapshots/campaign_daily/bank_transactions REFERENCES import_batches(id) and tenants(id) with no cascade; PILOT_RUNBOOK.md has no deletion step; vault/30-Интеграции/Банки Армении.md Art. 5 'хранение в идентифицируемом виде не дольше необходимого'.",
+  "severity": "high",
+  "replacement": "Պիլոտի ավարտից կամ դադարեցումից հետո <N> աշխատանքային օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը, դրանց պատճենները և տվյալների բազայի ձեր բոլոր գրառումները (եթե գրավոր չխնդրեք պահել դրանք շարունակության համար) և գրավոր հաստատում ենք ջնջումը։ (Prerequisite: add a tenant purge command and a runbook step before the offer goes out.)",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Պիլոտի ավարտից կամ դադարեցումից հետո 10 աշխատանքային օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը (ներառյալ էլ. փոստով կամ մեսենջերով ստացված պատճենները), ձեզ համար պատրաստված հաշվետվությունների մեր պատճենները և տվյալների բազայում ձեր բոլոր գրառումները, եթե մինչ այդ գրավոր չեք խնդրել պահել դրանք շարունակության համար, և ջնջումը գրավոր հաստատում ենք։",
+   "Պիլոտի ավարտից կամ դադարեցումից հետո 10 աշխատանքային օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը (նաև էլ. փոստով և մեսենջերով ստացված պատճենները), մեր պատրաստած հաշվետվությունները և տվյալների բազայում ձեր բոլոր գրառումները, ապա գրավոր հաստատում ենք ջնջումը։ Եթե ցանկանում եք շարունակել, մինչ այդ գրավոր տեղեկացրեք, և տվյալները կպահենք միայն շարունակության համար։ (Prerequisite before sending the offer: a tenant purge command that sets app.tenant_id and deletes in FK order, plus a PILOT_RUNBOOK.md step listing which file folders and mailboxes to clear.)",
+   "Պիլոտի ավարտից կամ դադարեցումից հետո 10 աշխատանքային օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը, մեր պատրաստած հաշվետվությունները և տվյալների բազայում ձեր բոլոր գրառումները (եթե չեք խնդրել պահել դրանք շարունակության համար) և գրավոր հաստատում ենք ջնջումը։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Նպատակը պարզելն է՝ (1) խնդիրը իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը։",
+  "problem": "Neither the goals nor any question cover who decides on and pays for an outside service. Q2, Q4 and Q17 ask who runs the software or the ads, not who approves spending. The script is for 'սեփականատիրոջ/հաշվապահի', so a 'yes' from an accountant can be scored as a buying commitment. Nothing asks how the shop's last service purchase was decided.",
+  "severity": "high",
+  "replacement": "Նպատակը պարզելն է՝ (1) խնդիրն իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը, (4) ո՞վ է որոշում և վճարում նման ծառայության համար։ Ավելացնել հարց բաժին 1-ում՝ «Վերջին անգամ, երբ սկսեցիք վճարել որևէ ծառայության կամ ծրագրի համար (ՀԾ-ի փաթեթ, խորհրդատու, գովազդի գործակալություն), ո՞վ առաջարկեց, ո՞վ հաստատեց վճարումը, և որքա՞ն տևեց որոշումը»։",
+  "evidence": "01_Interview_script_HY.md:1, 3, 10, 12, 31. ROADMAP_HY.md §1 assumes 'սեփականատեր, որն ինքն է որոշում գնումներն ու գովազդի բյուջեն' (marked ASSUMPTION), and the script never checks it.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Line 3: «Նպատակը պարզելն է՝ (1) խնդիրն իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը, (4) ո՞վ է որոշում և վճարում արտաքին ծառայության համար։»\n\nAdd to section 1, after Q4, as Q4ա: «Վերջին անգամ, երբ սկսեցիք վճարել որևէ արտաքին ծառայության կամ ծրագրի համար (ՀԾ-ի բաժանորդագրություն, խորհրդատու, գովազդի գործակալություն), ո՞վ առաջարկեց, ո՞վ հաստատեց վճարումը, և որքա՞ն տևեց որոշումը։ Ամսական ի՞նչ գումարից սկսած է պետք սեփականատիրոջ համաձայնությունը։»\n\nScoring table, replace the row «| Համաձայնեց վճարովի պիլոտին | +5 |» with «| Վճարովի պիլոտին համաձայնեց այն անձը, ով հաստատում է վճարումը | +5 |» and add the row «| Զրուցակիցը վճարումը չի հաստատում, բայց համաձայնեց կոնկրետ օրով հանդիպում կազմակերպել սեփականատիրոջ հետ | +2 |».",
+   "Line 3: «Նպատակը պարզելն է՝ (1) խնդիրն իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը, (4) ո՞վ է որոշում և հաստատում նման ծառայության վճարումը։»\n\nNew question after Q11, in section 3: «11ա. **Վերջին անգամ**, երբ սկսեցիք վճարել որևէ ծառայության կամ ծրագրի համար (ՀԾ-ի փաթեթ, խորհրդատու, գովազդի գործակալություն), ո՞վ առաջարկեց, ո՞վ հաստատեց վճարումը, և որքա՞ն տևեց որոշումը։ Եթե դուք չեք հաստատողը՝ կարո՞ղ ենք հաջորդ զրույցին նրան էլ հրավիրել։»\n\nNew rows in the scoring table:\n- «| Զրուցակիցն ինքն է հաստատում վճարումը, կամ նշանակեց հանդիպում հաստատողի հետ կոնկրետ օրով | +2 |»\n- «| «Համաձայնեց վճարովի պիլոտին» միավորը (+5) հաշվել միայն, եթե համաձայնողը վճարումը հաստատող անձն է |  |»",
+   "Line 3: «Նպատակը պարզելն է՝ (1) խնդիրն իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը, (4) ո՞վ է հաստատում արտաքին ծառայության վճարումը։»\nSection 1, after Q4, add: «4ա. Վերջին անգամ, երբ սկսեցիք վճարել որևէ ծառայության կամ ծրագրի համար (ՀԾ-ի փաթեթ, խորհրդատու, գովազդի գործակալություն), ո՞վ առաջարկեց, ո՞վ հաստատեց վճարումը, և որքա՞ն տևեց որոշումը։»\nScoring table, replace «| Համաձայնեց վճարովի պիլոտին | +5 |» with «| Վճարովի պիլոտին համաձայնեց վճարումը հաստատողը | +5 |»."
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "13. Վաճառքի ցանկում երևո՞ւմ է **վճարման եղանակը** (կանխիկ / քարտ)։",
+  "problem": "This is a closed yes/no question about export columns, put to an owner who usually does not run ՀԾ, so the answer is a guess. Yet it decides whether bank reconciliation can be MATCHED or only PLAUSIBLE, which is what Option Բ charges +130k/+70k for. It also skips the card share of sales and the acquiring bank. Without those you cannot tell whether reconciliation is worth anything to this shop.",
+  "severity": "high",
+  "replacement": "13. Վերջին ամսում վաճառքի մոտավորապես ո՞ր մասն էր քարտով։ Ո՞ր բանկի POS-տերմինալ ունեք։ Բացենք ՀԾ-ի վաճառքի ցանկը. կա՞ առանձին սյունակ «կանխիկ / անկանխիկ»։ (Եթե էկրանին չեք տեսել՝ գրանցել «չստուգված»)",
+  "evidence": "Решения.md #12 (no payment method → only PLAUSIBLE). PILOT_RUNBOOK.md 'TOTAL_SALES_PROXY'. app/README.md V3 reconciliation. README 'Next: payment_method in the HC mapping once a real export shows the column' (not yet confirmed). The tracker has a 'Способ оплаты в экспорте' column.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "13. Վերջին ամսում վաճառքի մոտավորապես ո՞ր մասն էր քարտով (POS-տերմինալով)։ Քարտային վճարումների գումարը ո՞ր բանկի ո՞ր հաշվին է մուտք լինում։ ՀԾ-ի վաճառքի ցանկում (կամ ցանկի սյունակների կարգավորումներում) կա՞ վճարման եղանակի սյունակ, և ինչպե՞ս է գրված արժեքը (օր.՝ «կանխիկ», «անկանխիկ», «քարտ»)։ *(Եթե սյունակը չի երևացել էկրանին կամ ֆայլի օրինակում՝ տրեկերում գրել «չստուգված», ոչ «այո»։ Արժեքի ճշգրիտ գրությունը գրանցել։)*",
+   "13. Վերջին ամսում վաճառքի մոտավորապես ո՞ր մասն էր քարտով (POS)։ Ո՞ր բանկի POS-տերմինալ ունեք, և քարտով վաճառքի գումարները ո՞ր հաշվին են մուտքագրվում՝ հիմնակա՞ն, թե առանձին։ ՀԾ-ի վաճառքի ցանկում կա՞ վճարման եղանակի սյունակ, և ի՞նչ արժեքներ են այնտեղ գրվում (օր.՝ «կանխիկ», «քարտ», «անկանխիկ»)։ *(Եթե սյունակը էկրանին կամ ֆայլում չի երևացել՝ տրեքերում նշել «չստուգված» և ստուգել 19-րդ հարցի արտահանման մեջ։)*",
+   "13. Վերջին ամսում վաճառքի մոտավորապես ո՞ր մասն էր քարտով։ Ո՞ր բանկի POS-տերմինալ ունեք։ ՀԾ-ի վաճառքի ցանկում քարտով վճարումները առանձնանո՞ւմ են կանխիկից։ *(Խնդրել ցույց տալ էկրանին ցանկի սյունակները (ոչ գնորդների տվյալները) և գրառել վճարման եղանակի արժեքները բառացի, օր. «քարտ», «POS», «անկանխիկ»։ Չստացվելու դեպքում տրեկերում նշել «չստուգված»։)*"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "14. Ապրանքների **ինքնարժեքը** վարվո՞ւմ է ծրագրում, թե միայն վաճառքի գինը։",
+  "problem": "The question offers only yes or no, but the usual real answer is 'partly' (the accountant checklist 3.3 has Այո/Մասամբ/Ոչ, and the code computes cogsCoverage and the COGS_MISSING flag). The owner's word is not evidence, and the question skips who keeps COGS up to date and whether they would fill top-50 by hand, which is the guide's fallback. Gross profit, 'ապրանքներ ըստ շահույթի' and the AD_TEST max acquisition cost all depend on this answer.",
+  "severity": "high",
+  "replacement": "14. Վերջին անգամ նոր ապրանք ստանալիս ո՞վ մուտքագրեց դրա գնման գինը ՀԾ-ում։ Ձեր ամենավաճառվող 20 ապրանքներից քանիսի՞ ինքնարժեքն է այնտեղ հիմա (նայենք էկրանին)։ Եթե չկա՝ ո՞վ և ե՞րբ կարող է դրանք լրացնել մեր Excel-ում։",
+  "evidence": "docs/guides/04_Accountant_formulas_checklist_HY.md 3.3. docs/guides/01_HC_Trade_export_HY.md:13 (top-50 manual fallback). KpiService cogsCoverage / COGS_MISSING. RecommendationEngine AD_TEST requires cogs. Risk #2.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "14. Ապրանքների **ինքնարժեքը** ծրագրում լրացվա՞ծ է բոլոր ապրանքների համար, մի մասի՞, թե ոչ մեկի։ Ո՞վ է այն մուտքագրում նոր ապրանք ստանալիս (եթե ծրագիրը մոտ է՝ միասին նայենք ամենավաճառվող 3–5 ապրանքի քարտը)։ Եթե մասամբ կամ ոչ՝ ո՞վ կարող է ամենավաճառվող 50 ապրանքի ինքնարժեքը ձեռքով լրացնել առանձին Excel-ում, և մինչև ե՞րբ։",
+   "14. Ապրանքների **ինքնարժեքը (գնման գինը)** ծրագրում լրացված է **բոլոր**, **մի մասի**, թե **ոչ մի** ապրանքի համա՞ր։ Վերջին անգամ նոր ապրանք ստանալիս ո՞վ մուտքագրեց դրա գնման գինը։ Եթե հնարավոր է՝ բացենք վաճառքի ցանկը. ինքնարժեքի սյունակը երևո՞ւմ է ամենավաճառվող 10 ապրանքի տողերում։ Եթե ոչ՝ որտե՞ղ են գնման գները (հաշիվ-ապրանքագրեր, Excel, տետր), և ո՞վ կարող է դրանք դուրս գրել ամենավաճառվող 50 ապրանքի համար։",
+   "14. Վերջին անգամ նոր ապրանք ստանալիս ո՞վ մուտքագրեց դրա **ինքնարժեքը** (գնման գինը) ծրագրում, թե՞ մուտքագրվեց միայն վաճառքի գինը։ Ամենավաճառվող 20 ապրանքներից քանիսի՞ ինքնարժեքն է հիմա լրացված (եթե հնարավոր է՝ նայենք էկրանին)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «հայտնաբերվել է ապրանք, որի գովազդը շահույթ չի բերում»։",
+  "problem": "(a) 'ընդունված' only records a status click: recommendation_decisions ACCEPTED triggers no action. It measures opinion, not behaviour, so it is easy to game. (b) The product cannot find 'an item whose advertising brings no profit'. campaign_daily has no SKU link and KpiService only sums total spend. It is also a causal claim that the offer itself rules out ('Գովազդի «արդյունքը» կոչում ենք հավելյալ վաճառք միայն վերահսկվող փորձարկումից հետո'), and founder doc §7 calls per-SKU allocation a method, not a fact. (c) Accountant sign-off is our onboarding step, not a result for the client.",
+  "severity": "high",
+  "replacement": "Օրինակ՝ «4 շաբաթում առնվազն 1 առաջարկ իրականացվել է (պատվեր, զեղչ կամ գովազդի սահմանափակ փորձարկում), և դրա արդյունքը չափվել է հաջորդ շաբաթների ֆայլերով», «շաբաթական հաշվետվությունը փոխարինել է ձեր կամ հաշվապահի ձեռքով աշխատանքի առնվազն <N> ժամ», «գտնվել է առնվազն 1 ապրանք, որի պահեստում սառած ինքնարժեքը <գումար> դրամից ավելի է»։",
+  "evidence": "02_Pilot_offer_HY.md:19, 37. V2__mappings_and_domain_tables.sql campaign_daily (no sku column). KpiService.java:75 (sum(spend) for the period). app/README.md:103 ('Decisions trigger no external action'). Founder doc §7 and §11.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Օրինակ՝ «4 շաբաթում առնվազն 1 առաջարկ իրականում կատարվել է (օր.՝ համալրման պատվեր կամ դանդաղ ապրանքի վերանայում), և մենք գրանցել ենք՝ որը և երբ», «շաբաթական հաշվետվությունը խնայել է ձեր կամ հաշվապահի ձեռքով աշխատանքի առնվազն <N> ժամ շաբաթական», «գտնվել է առնվազն 1 դանդաղ շրջանառվող ապրանք, որի մնացորդը ինքնարժեքով <գումար> դրամից ավելի է»։",
+   "Օրինակ՝ «4 շաբաթում առնվազն 1 առաջարկ իրականացվել է (համալրման պատվեր, գնի վերանայում կամ գովազդի սահմանափակ փորձարկում), և դուք գրանցել եք՝ ինչ որոշեցիք ու ինչու», «գտնվել է առնվազն 1 դանդաղ շրջանառվող ապրանք, որի ինքնարժեքով կապված գումարը <գումար> դրամից ավելի է», «4-րդ շաբաթվա ֆայլերում տվյալների որակի ցուցակի սխալները <N>-ից քիչ են», «շաբաթական հաշվետվությունը խնայել է ձեր կամ հաշվապահի ձեռքով աշխատանքի առնվազն <N> ժամ՝ առաջին զանգում նշված ժամերի համեմատ»։",
+   "Օրինակ՝ «4 շաբաթում առնվազն 2 առաջարկ ոչ միայն ընդունվել, այլև կատարվել է», «4-րդ շաբաթում ինքնարժեքը հայտնի է մաքուր վաճառքի առնվազն 90%-ի համար», «գտնվել է դանդաղ շրջանառվող ապրանք, որի պաշարը ինքնարժեքով 500 000 դրամից ավելի է»։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Բանկային քաղվածքում գործընկերների անուններն ու հաշվեհամարները պահվում են դիմակավորված, հաշվի համարից՝ միայն վերջին 4 թիվը։",
+  "problem": "There are four language problems in one privacy promise. (1) 'թիվ' (number) is used where 'թվանշան' (digit) is meant. (2) One sentence uses two words for the same thing: 'հաշվեհամար' and 'հաշվի համար'. (3) 'գործընկեր' is a calque of 'counterparty', and a shop owner reads it as 'my business partners'. (4) 'դիմակավորված' is a calque of 'masked' ('wearing a mask'). Because of this wording, the sentence also tells the client that their counterparties' account numbers keep the last 4 digits. The code does something different.",
+  "evidence": "CommitService.maskAccount (lines 222-223, 258-261) keeps the last 4 digits only of the statement's own account_ref (decision #14 in Решения.md). Names and numbers in the description are cut to the first 2 characters plus *** (ValueConverters.maskDescription, lines 74-89). counterparty_account is used only to detect internal transfers and is never stored (CommitService INSERT, lines 241-252).",
+  "severity": "high",
+  "replacement": "Բանկային քաղվածքում վճարողների և ստացողների անուններն ու հաշվեհամարները պահում ենք թաքցված տեսքով (օրինակ՝ «Ար***»)։ Ձեր հաշվեհամարից պահում ենք միայն վերջին 4 թվանշանը։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Բանկային քաղվածքից հաշվետվություններում և վերլուծական աղյուսակներում վճարողների ու ստացողների անուններն ու համարները երևում են թաքցված տեսքով (օրինակ՝ «Ար***»), իսկ ձեր հաշվեհամարից՝ միայն վերջին 4 թվանշանը։ Ներբեռնված ֆայլի բնօրինակ տողերը պահվում են ձեր առանձնացված տարածքում, մինչև ջնջենք դրանք ձեր պահանջով։",
+   "Բանկային քաղվածքի նկարագրություններում վճարողների և ստացողների անուններն ու հաշվեհամարները հաշվետվությունների համար պահում ենք կրճատված տեսքով (օրինակ՝ «Պետրոսյան» → «Պե***»), իսկ ձեր հաշվեհամարից՝ առավելագույնը վերջին 4 թվանշանը։ Ներմուծված ֆայլի բնօրինակ տողերը պիլոտի ընթացքում պահվում են առանձին, հասանելի են միայն ձեր հաշվին և ջնջվում են ձեր պահանջով։",
+   "Բանկային քաղվածքից հաշվետվությունների համար վճարողների և ստացողների անուններն ու հաշվեհամարները պահում ենք թաքցված տեսքով (օրինակ՝ «Ար***»), իսկ ձեր հաշվեհամարից՝ միայն վերջին 4 թվանշանը։ Բեռնված ֆայլերի սկզբնական տողերը պահվում են ամբողջությամբ՝ ձեր առանձնացված տարածքում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Վճարումը՝ միացումը սկզբում, 4 շաբաթը՝ երկրորդ շաբաթվա վերջում, եթե առաջին երկու հաշվետվությունները օգտակար են։",
+  "problem": "The payment condition is an elliptical sentence with no verbs. 'միացումը սկզբում' and '4 շաբաթը՝' cannot be read aloud as a sentence. It does not say who decides whether the reports were 'useful', which is a ready-made dispute over money. There is also an article error: before a vowel it must be 'հաշվետվություններն օգտակար'.",
+  "evidence": "02_Pilot_offer_HY.md line 34. The article rule (ը becomes ն before a vowel) is the same one applied elsewhere in the docs, e.g. 'Ֆայլն իսկապես ուղարկեց'.",
+  "severity": "high",
+  "replacement": "Վճարման կարգը. մեկանգամյա վճարը՝ սկզբում, 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում, և միայն եթե դուք որոշեք, որ առաջին երկու հաշվետվություններն օգտակար էին։ Կարող եք դադարեցնել ցանկացած պահի։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Միացման վճարը կատարվում է սկզբում, իսկ 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում և միայն այն դեպքում, եթե դուք համարեք, որ առաջին երկու հաշվետվություններն օգտակար են։ Հակառակ դեպքում 4 շաբաթվա վճարը չեք կատարում։",
+   "Վճարման կարգը. միացման վճարը կատարվում է սկզբում, իսկ 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում, միայն եթե դուք գտնեք, որ առաջին երկու հաշվետվություններն օգտակար էին։ Եթե օգտակար չէին, 4 շաբաթվա վճարը չեք կատարում, և պիլոտն ավարտվում է։ Կարող եք դադարեցնել ցանկացած պահի։",
+   "Միացման վճարը՝ սկզբում, 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում, և միայն եթե դուք որոշեք, որ առաջին երկու հաշվետվություններն օգտակար էին։ Կարող եք դադարեցնել ցանկացած պահի։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Գնորդների անուն/հեռախոս **չենք ներմուծում**։",
+  "problem": "This privacy promise is false with the current code. ImportService stores every row of every uploaded file, with all columns, in source_records.raw_payload. Customer columns are only left out of the domain tables because they are not mapped. If a client's HC export still has a buyer name or phone column, it is imported and kept indefinitely, since no deletion path exists. Making a false statement about personal-data handling creates direct liability, and the Art. 5 minimisation argument ('PII is cut at mapping') does not hold.",
+  "severity": "high",
+  "replacement": "Գնորդների անուն, հեռախոս, հասցե և այլ անձնական տվյալներ մեզ պետք չեն. խնդրում ենք այդ սյունակները հեռացնել ֆայլից՝ ուղարկելուց առաջ։ Եթե դրանք ֆայլում մնան, մենք դրանք չենք օգտագործի հաշվարկներում և հաշվետվություններում և կջնջենք ֆայլի հետ միասին։ (Keep the original sentence only after the code drops unmapped columns before writing raw_payload.)",
+  "evidence": "app/src/main/java/am/retailai/imports/ImportService.java:163-173 inserts raw_payload = jsonb(row.asMap()). ParsedRow and the CSV/XLSX parsers put every header into cells (CsvTabularParser:55-57, XlsxTabularParser:109-114). V1 migration: 'raw_payload jsonb NOT NULL -- header -> cell value'. README:46 'PII columns are simply not mapped'. Guide docs/guides/01_HC_Trade_export_HY.md:31 makes the same false claim ('կկտրենք ներմուծման պահին և չենք պահի').",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- Գնորդների անուն, հեռախոս, հասցե և այլ անձնական տվյալներ մեզ պետք չեն. խնդրում ենք այդ սյունակները հեռացնել ֆայլից՝ ուղարկելուց առաջ (ուղեցույցում ցույց ենք տալիս՝ ինչպես)։ Ձեր ֆայլի տողերը պահվում են այնպես, ինչպես ստացել ենք, որպեսզի յուրաքանչյուր թիվ ստուգելի լինի, բայց հաշվարկներում և հաշվետվություններում օգտագործվում են միայն վաճառքի, պահեստի, գովազդի և բանկային գործարքի սյունակները։ Հաշվետվություններում և վերլուծական աղյուսակներում բանկային գործընկերների անուններն ու հաշվեհամարները դիմակավորված են (հաշվի համարից՝ միայն վերջին 4 թիվը)։ Պիլոտի ավարտից հետո կամ ձեր պահանջով ջնջում ենք և՛ ֆայլերը, և՛ դրանցից ներմուծված բոլոր տողերը։\n(Return to the shorter 'we do not import customer names/phones' promise only after the code drops unmapped columns and masks bank fields before writing raw_payload. Apply the same fix to docs/guides/01_HC_Trade_export_HY.md, line 31.)",
+   "Replace the whole bullet (both sentences) with:\n\"Գնորդների անուն, հեռախոս, հասցե և այլ անձնական տվյալներ մեզ պետք չեն և հաշվարկներում ու հաշվետվություններում չեն օգտագործվում։ Խնդրում ենք այդ սյունակները հեռացնել ֆայլից՝ ուղարկելուց առաջ (ուղեցույցում ցույց ենք տալիս՝ ինչպես)։ Բանկային քաղվածքից գործընկերների անուններն ու հաշվեհամարները հաշվետվություններում և վերլուծական տվյալներում պահվում են դիմակավորված (հաշվի համարից՝ միայն վերջին 4 թիվը)։ Ձեր ուղարկած ֆայլերի բնօրինակ տողերը պահվում են փակ, միայն ձեր հաշվի համար, ներմուծումը ստուգելու նպատակով, և ջնջվում են պիլոտի ավարտից հետո՝ ձեր պահանջով։\"\nRestore the absolute wording \"չենք ներմուծում\" / \"պահվում են դիմակավորված\" only after the code drops unmapped columns and masks bank fields before raw_payload is written. Fix README:46 and docs/guides/01_HC_Trade_export_HY.md (\"կկտրենք ներմուծման պահին և չենք պահի\") at the same time.",
+   "Գնորդների անուն, հեռախոս և այլ անձնական տվյալներ մեզ պետք չեն. խնդրում ենք այդ սյունակները հանել ֆայլից՝ ուղարկելուց առաջ։ Եթե մնան, դրանք չեն օգտագործվում հաշվարկներում և հաշվետվություններում, պահվում են միայն ներմուծված տողերում և ջնջվում են մյուս տվյալների հետ միասին՝ ձեր պահանջով։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Բանկային քաղվածքում գործընկերների անուններն ու հաշվեհամարները պահվում են դիմակավորված, հաշվի համարից՝ միայն վերջին 4 թիվը։",
+  "problem": "This sentence is false in three ways. (1) source_records.raw_payload keeps the full, unmasked bank description, counterparty account, and the MT940 :25: account. Only bank_transactions.description is masked. (2) maskDescription keeps the FIRST 2 characters of each word, not the last 4 digits. Any word of 3 characters or fewer stays in clear text (e.g. the first name 'Անի', 'ԱՁ'). Space- or dash-grouped account numbers stay complete: '1570 0123 4567 0001' is stored unchanged, which I verified by running the method. (3) 'Last 4 digits' only applies to the client's OWN account_ref column, and only when no label is set (CommitService.maskAccount). Bank statements also contain employee salary payments, so this is personal data that stays identifiable. Partial masking is pseudonymisation, not anonymisation.",
+  "severity": "high",
+  "replacement": "Բանկային քաղվածքի նշանակման դաշտում գործընկերների անունները և հաշվեհամարները մշակված աղյուսակներում պահվում են մասնակի թաքցված տեսքով (օր.՝ «Պե***»)։ Սա լիարժեք անանունացում չէ, ուստի այդ տվյալները պաշտպանում ենք որպես անձնական տվյալներ և ջնջում ենք պիլոտից հետո։ Ձեր սեփական հաշվի համարի փոխարեն պահում ենք միայն պայմանական անվանում (օր.՝ «Ամերիա AMD հիմնական»)։",
+  "evidence": "app/src/main/java/am/retailai/commit/ValueConverters.java:75-88 (word.length() <= 3 kept; numeric tokens of 4 chars or fewer kept; longer ones become first 2 chars + ***). CommitService.java:223 and 258-262 (last-4 rule only for account_ref). CommitService.java:237-238 (counterparty_account is read raw). Mt940Parser.java:77 puts the full account into cells, which are stored raw by ImportService. Decision log #14 ('Номер счёта из файла хранится маскированным') covers only the own account, not counterparties.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Բանկային քաղվածքի տողերը սկզբնական տեսքով (ներառյալ նշանակման դաշտը և հաշվեհամարները) պահվում են միայն ձեր հաշվին հասանելի առանձին աղյուսակում՝ ստուգման համար։ Մշակված տվյալներում նշանակման դաշտի անուններն ու համարները մասնակի թաքցված են (օր.՝ «Պե***»), իսկ ձեր հաշիվը նշվում է պայմանական անվանումով կամ վերջին 4 թվով։ Սա լիարժեք անանունացում չէ, ուստի այս տվյալները պաշտպանում ենք որպես անձնական տվյալներ և ջնջում ենք ձեր պահանջով։",
+   "Բանկային քաղվածքի տողերը մեր բազայում պահվում են այնպես, ինչպես կան ֆայլում (ներառյալ գործընկերների անուններն ու հաշվեհամարները), որպեսզի հնարավոր լինի ստուգել և վերամշակել դրանք․ դրանք հասանելի են միայն ձեր հաշվին։ Հաշվետվության համար օգտագործվող աղյուսակներում նշանակման դաշտը մասնակի թաքցվում է (օր.՝ «Պե***»), իսկ ձեր հաշիվը նշվում է պայմանական անվանումով կամ միայն վերջին 4 թվով։ Սա լիարժեք անանունացում չէ, ուստի այս տվյալները պաշտպանում ենք որպես անձնական տվյալներ և պիլոտից հետո ջնջում ենք ձեր պահանջով։",
+   "Բանկային քաղվածքի բնօրինակ տողերը (ներառյալ անուններն ու հաշվեհամարները) պահվում են ամբողջությամբ, իսկ մշակված տվյալներում նշանակման դաշտը մասնակի թաքցված է (օր.՝ «Պե***»)։ Սա անանունացում չէ, ուստի ամբողջ քաղվածքը (այդ թվում՝ աշխատավարձի վճարումները) համարում ենք անձնական տվյալներ։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Պիլոտի ավարտից հետո ձեր ֆայլերը և տվյալները ջնջում ենք ձեր պահանջով։",
+  "problem": "Deletion happens only on request and has no deadline. RA personal data law Art. 5 forbids keeping data in identifiable form longer than necessary. The founder doc requires 'սահմանափակ ժամկետով' storage (§3 step 2) and 'retention/deletion' (§9). Nothing in the code implements deletion. The only DELETE is the reconciliation rerun. Foreign keys from sale_lines, inventory_snapshots, campaign_daily and bank_transactions to import_batches have no ON DELETE CASCADE, so even a manual cleanup is not a single step. The original files also sit in email or on the operator's disk, which this sentence does not cover. The promise cannot be verified or kept as written.",
+  "severity": "high",
+  "replacement": "Պիլոտի ավարտից կամ դադարեցումից հետո 30 օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը (այդ թվում՝ էլ. փոստից և պահուստային պատճեններից) և դրանցից ներմուծված բոլոր տվյալները, և ջնջումը հաստատում ենք գրավոր։ Եթե ցանկանում եք, որ տվյալները պահպանվեն շարունակության համար, խնդրում ենք դա գրավոր նշել մինչև պիլոտի ավարտը։",
+  "evidence": "vault/30-Интеграции/Банки Армении.md:40 (Art. 5: storage no longer than necessary). docs/CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md:37 and :123. grep: the only DELETE in app/src/main/java is recon/ReconciliationService.java:43. V2__mappings_and_domain_tables.sql: import_batch_id REFERENCES import_batches(id) with no cascade.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Պիլոտի ավարտից կամ դադարեցումից հետո 30 օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը (էլ. փոստից, մեր համակարգիչներից և պահուստային պատճեններից) և դրանցից ներմուծված բոլոր տվյալները, և ջնջման մասին գրավոր տեղեկացնում ենք ձեզ։ Եթե ցանկանում եք, որ տվյալները պահպանվեն պիլոտի շարունակության համար, խնդրում ենք դա գրավոր նշել մինչև պիլոտի ավարտը։",
+   "Ձեր պահանջով՝ ցանկացած պահի, իսկ առանց պահանջի՝ պիլոտի ավարտից կամ դադարեցումից ոչ ուշ, քան 30 օր հետո, ջնջում ենք ձեր ուղարկած ֆայլերը (էլ. փոստից, մեր համակարգիչներից և պահուստային պատճեններից), դրանցից ներմուծված բոլոր տվյալները և ձեզ ուղարկված հաշվետվությունների մեր պատճենները, և ջնջումը հաստատում ենք գրավոր։ Եթե ցանկանում եք, որ տվյալները պահպանվեն շարունակության համար, խնդրում ենք դա գրավոր նշել մինչև պիլոտի ավարտը։",
+   "Պիլոտի ավարտից կամ դադարեցումից հետո 30 օրվա ընթացքում ջնջում ենք ձեր ուղարկած ֆայլերը, դրանցից ներմուծված տվյալները և մեր մոտ մնացած հաշվետվությունները, ապա գրավոր հաստատում ենք ջնջումը։ Եթե ցանկանում եք, որ դրանք պահպանենք շարունակության համար, նշեք դա գրավոր մինչև պիլոտի ավարտը։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "## Տվյալների պաշտպանություն",
+  "problem": "The data-protection section never names the party processing the data: no legal name, ՀՎՀՀ or contact. It does not state the roles: the client is the data controller ('մշակող') for employee and counterparty data in bank statements, and we are the authorised person ('լիազորված անձ') acting only on the client's instruction. It gives no purpose limitation and no lawful basis or client warranty. It also does not say a signed agreement is required before files are sent. The founder doc requires deciding 'ովքեր են մշակող/լիազորված, որտեղ են պահվում, ում են փոխանցվում' (§9). Phase 0 says to sign data access and confidentiality terms (§10). A client's lawyer would expect this in any offer that asks for bank statements. Exact legal terms are an ASSUMPTION until a lawyer confirms them.",
+  "severity": "high",
+  "replacement": "Անձնական տվյալների պաշտպանության մասին ՀՀ օրենքի իմաստով ձեր ֆայլերում առկա անձնական տվյալների (օր.՝ բանկային քաղվածքում աշխատակիցների կամ ֆիզիկական անձ գործընկերների անունների) մշակողը դուք եք, իսկ <կազմակերպության/ԱՁ անվանում, ՀՎՀՀ, հասցե, էլ. փոստ>-ը գործում է որպես լիազորված անձ՝ միայն ձեր գրավոր հանձնարարությամբ և միայն ձեր կառավարչական հաշվետվությունը պատրաստելու նպատակով։ Դուք հաստատում եք, որ այդ տվյալները մեզ փոխանցելու իրավական հիմք ունեք։ Պայմանները ամրագրվում են պիլոտի պայմանագրում և տվյալների մշակման համաձայնագրում, որոնք ստորագրվում են առաջին ֆայլն ուղարկելուց առաջ։",
+  "evidence": "docs/CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md:125 (§9) and :131 (§10, 'Կնքել տվյալների հասանելիության/գաղտնիության պայմաններ'). Банки Армении.md:45-49 ('ASSUMPTION до юриста'). The offer lines 22-26 contain none of these elements.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- «Անձնական տվյալների պաշտպանության մասին» ՀՀ օրենքի իմաստով ձեր ֆայլերում առկա անձնական տվյալների (օր.՝ բանկային քաղվածքում աշխատակիցների կամ ֆիզիկական անձ գործընկերների անունների) մշակողը դուք եք, իսկ <կազմակերպության/ԱՁ անվանում, ՀՎՀՀ, հասցե, էլ. փոստ>-ը գործում է որպես լիազորված անձ՝ միայն ձեր գրավոր առաջադրանքով և միայն ձեր կառավարչական հաշվետվությունը պատրաստելու նպատակով։ Առաջին ֆայլն ուղարկելուց առաջ ստորագրում ենք պիլոտի պայմանագիր և գրավոր առաջադրանք, որտեղ նշված են մշակման նպատակը, իրավական հիմքը, տվյալների ցանկը, պահպանման վայրը և ժամկետը, ինչպես նաև պաշտպանության միջոցները։ Դուք հաստատում եք, որ այդ տվյալները մեզ փոխանցելու իրավական հիմք ունեք։",
+   "- Անձնական տվյալների պաշտպանության մասին ՀՀ օրենքի իմաստով ձեր ֆայլերում առկա անձնական տվյալների (օր.՝ բանկային քաղվածքում աշխատակիցների կամ ֆիզիկական անձ գործընկերների անունների) մշակողը դուք եք, իսկ <կազմակերպության/ԱՁ անվանում, ՀՎՀՀ, հասցե, էլ. փոստ>-ը գործում է որպես լիազորված անձ՝ միայն ձեր գրավոր հանձնարարությամբ և միայն ձեր կառավարչական հաշվետվությունը պատրաստելու նպատակով։\n- Դուք հաստատում եք, որ այդ տվյալները մեզ փոխանցելու իրավական հիմք ունեք։\n- Տվյալների պահման վայրը (<երկիր, հոսթինգի մատակարար>) և մեր ներգրաված ենթակատարողները նշվում են տվյալների մշակման համաձայնագրում։ Այդ համաձայնագիրը և պիլոտի պայմանագիրը ստորագրվում են առաջին ֆայլն ուղարկելուց առաջ։",
+   "(Insert as the first bullet under «## Տվյալների պաշտպանություն» and keep the heading.)\n- Կատարող՝ <անվանում, ՀՎՀՀ, էլ. փոստ>։ Առաջին ֆայլն ուղարկելուց առաջ ստորագրում ենք պիլոտի պայմանագիր՝ գաղտնիության և անձնական տվյալների մշակման պայմաններով։ Ձեր տվյալներն օգտագործում ենք միայն ձեր հանձնարարությամբ և միայն այս պիլոտի շրջանակում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Վճարումը՝ միացումը սկզբում, 4 շաբաթը՝ երկրորդ շաբաթվա վերջում, եթե առաջին երկու հաշվետվությունները օգտակար են։ Կարող եք դադարեցնել ցանկացած պահի։",
+  "problem": "The 4-week fee depends on an undefined, subjective test ('օգտակար են'). The text does not say who decides or by what measure, so the client can decline payment at will. That also makes the pilot useless as a willingness-to-pay signal. 'Stop at any time' gives no notice form and says nothing about refunds of the setup fee or of a 4-week fee already paid. It also says nothing about what happens to the data on termination. The payment method, invoice, and payment deadline in days are all missing.",
+  "severity": "high",
+  "replacement": "Վճարում՝ բանկային փոխանցմամբ, հաշվի հիման վրա։ Միացման վճարը՝ պայմանագիրը ստորագրելուց հետո 3 բանկային օրվա ընթացքում։ 4 շաբաթվա վճարը՝ երկրորդ շաբաթական հաշվետվությունն ստանալուց հետո 3 բանկային օրվա ընթացքում, եթե մինչ այդ գրավոր (էլ. փոստով) չեք հայտնել պիլոտը դադարեցնելու մասին։ Կարող եք դադարեցնել պիլոտը ցանկացած պահի՝ գրավոր ծանուցմամբ. մինչև 4 շաբաթվա վճարի ժամկետը դադարեցնելու դեպքում այն չի գանձվում, դրանից հետո դադարեցնելիս վճարված գումարը չի վերադարձվում։ Միացման վճարը չի վերադարձվում, բացառությամբ եթե առաջին հաշվետվությունը չենք տրամադրել մեր մեղքով։ Դադարեցման դեպքում տվյալները ջնջվում են «Տվյալների պաշտպանություն» բաժնի ժամկետում։",
+  "evidence": "docs/sales/02_Pilot_offer_HY.md:34. Founder doc §1: the file variant should 'ցույց տա հաճախորդի վճարելու պատրաստակամությունը' (line 9).",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Վճարումը՝ հաշվի հիման վրա, բանկային փոխանցմամբ։ Միացման վճարը՝ մեկնարկից առաջ. այն վերադարձվում է միայն այն դեպքում, եթե առաջին շաբաթական հաշվետվությունը չենք տրամադրել։ 4 շաբաթվա վճարի հաշիվը ներկայացնում ենք երկրորդ շաբաթական հաշվետվությունից հետո, վճարման ժամկետը՝ 5 աշխատանքային օր։ Եթե մինչև այդ ժամկետի ավարտը էլ. փոստով հայտնեք, որ դադարեցնում եք պիլոտը, 4 շաբաթվա վճարը չի գանձվում։ Կարող եք դադարեցնել պիլոտը ցանկացած պահի՝ էլ. փոստով ծանուցմամբ. արդեն վճարված գումարը չի վերադարձվում։ Դադարեցումից հետո ձեր ֆայլերը և տվյալները ջնջում ենք «Տվյալների պաշտպանություն» բաժնում նշված կարգով։",
+   "Վճարումը՝ անկանխիկ, մեր դուրս գրած հաշվի հիման վրա, հաշիվը ստանալուց հետո 5 աշխատանքային օրվա ընթացքում։ Միացման վճարի հաշիվը տալիս ենք պիլոտի սկզբում, 4 շաբաթվա վճարի հաշիվը՝ երկրորդ շաբաթական հաշվետվությունն ուղարկելուց հետո։ Եթե որոշեք, որ առաջին երկու հաշվետվությունները ձեզ օգտակար չեն, մինչև այդ հաշվի վճարման ժամկետը գրավոր (էլ. փոստով) հայտնեք պիլոտը դադարեցնելու մասին. այդ դեպքում 4 շաբաթվա վճարը չի գանձվում, իսկ միացման վճարը չի վերադարձվում։ Պիլոտը կարող եք դադարեցնել նաև ավելի ուշ՝ գրավոր ծանուցմամբ, բայց արդեն վճարված 4 շաբաթվա գումարը չի վերադարձվում։ Պիլոտը ցանկացած պահի դադարեցնելու դեպքում ձեր պահանջով ջնջում ենք ձեր ֆայլերը և տվյալները։",
+   "Միացման վճարը՝ սկզբում։ 4 շաբաթվա վճարը՝ երկրորդ շաբաթական հաշվետվությունից հետո, եթե որոշեք շարունակել. եթե չշարունակեք, այն չի գանձվում, և պիլոտն ավարտվում է։ Կարող եք դադարեցնել ցանկացած պահի՝ էլ. փոստով հայտնելով. արդեն վճարված գումարը չի վերադարձվում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Պիլոտի ընթացքում արհեստական բանականության արտաքին ծառայություն **չի** օգտագործվում. բացատրությունները կազմվում են շաբլոնով։",
+  "problem": "This is true only for the explanations in the report (llm.enabled=false by default). The working plan, though, hands a real ՀԾ export to Claude, an external AI service (Anthropic), to check the parser, and development runs in a cloud environment. The data protection section also never says where the database and files are hosted or how files are sent. That leaves the AI as the only external processing a reader would notice, while the founder's requirements (§9) and Art. 27 call for saying where data are stored and to whom they are transferred.",
+  "evidence": "LlmConfig.java llm.enabled default false (the explanation claim holds); vault/00-Index/Backlog.md '**G→C** Получить 1 реальный экспорт ՀԾ → заменить синтетическую фикстуру ..., перепроверить парсер'; vault/00-Index/Решения.md №7 'в облаке нет Docker'; docs/CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md §9 'որտեղ են պահվում տվյալները և ում են փոխանցվում'; Банки Армении.md Art. 27.",
+  "severity": "medium",
+  "replacement": "Հաշվետվության բացատրությունները կազմվում են շաբլոնով, առանց արհեստական բանականության արտաքին ծառայության։ Ձեր ֆայլերը կամ դրանց հատվածները առանց ձեր նախնական գրավոր համաձայնության չենք փոխանցում որևէ արտաքին AI ծառայության (այդ թվում՝ ծրագրավորման օգնականների)։ Տվյալները պահվում են <երկիր, մատակարար> սերվերում, ֆայլերը ստանում ենք <ուղի>-ով։",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Replace the whole bullet (the quoted sentence and the one after it) with two bullets:\n- Հաշվետվության բացատրությունները կազմվում են շաբլոնով՝ առանց արհեստական բանականության արտաքին ծառայության։ Ձեր ֆայլերը կամ դրանց հատվածները (այդ թվում՝ ծրագրի ստուգման կամ սխալների ուղղման նպատակով) չենք փոխանցում որևէ արտաքին AI ծառայության, այդ թվում՝ ծրագրավորման AI օգնականների, առանց ձեր նախնական գրավոր համաձայնության։ Եթե հետագայում AI ծառայություն միացնենք, նախապես գրավոր կտեղեկացնենք, թե որ մատակարարին և որ երկրում են փոխանցվում տվյալները, և կհամաձայնեցնենք։\n- Ֆայլերը ստանում ենք <ուղի, օր.՝ գաղտնաբառով պաշտպանված արխիվ/ծառայություն>-ով, տվյալները և ֆայլերը պահվում են <երկիր, մատակարար> սերվերում։",
+   "Հաշվետվության բացատրությունները կազմվում են շաբլոնով՝ առանց արհեստական բանականության արտաքին ծառայության։ Ձեր ֆայլերը կամ դրանց հատվածները (օրինակ՝ ներմուծման սխալը ստուգելու համար) որևէ արտաքին AI ծառայության, այդ թվում՝ ծրագրավորման AI օգնականի, չենք փոխանցում առանց ձեր նախնական գրավոր համաձայնության, իսկ համաձայնության դեպքում նախապես հեռացնում ենք անձնական տվյալները (գնորդների և գործընկերների անուններ, հաշվեհամարներ)։ Ֆայլերը ստանում ենք <ուղի>-ով, տվյալները պահվում են <երկիր, մատակարար>-ի սերվերում։ Եթե հետագայում AI ծառայություն միացնենք, նախապես գրավոր կտեղեկացնենք և կհամաձայնեցնենք։",
+   "Հաշվետվության բացատրությունները կազմվում են շաբլոնով, առանց արհեստական բանականության արտաքին ծառայության։ Ձեր ֆայլերը կամ դրանց մասերը, այդ թվում՝ ծրագիրը մշակելիս կամ ստուգելիս, առանց ձեր նախնական գրավոր համաձայնության չենք փոխանցում արհեստական բանականության որևէ արտաքին ծառայության։ Տվյալները պահվում են [երկիր, մատակարար], ֆայլերը ստանում ենք [էլ. փոստով / այլ ուղի]։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` (նշել, որ թվերը **օրինակային** են)։",
+  "problem": "The sample is out of date and contradicts the offer the prospect gets next. It was generated on 2026-10-02 and has 4 sheets. The current WeeklyReportService produces 6 sheets (it adds Համադրում and Առաջարկներ) plus a bank-balance block. The sample also carries the NO_INVENTORY_SNAPSHOT and NO_MARKETING_DATA flags, so days of stock, slow movers and ad spend are empty ('—'). As a result the prospect sees none of the recommendations, reconciliation, bank balance, stock days or ad spend that the offer sells, and question 18 collects feedback on a report that is not the product. On top of that, 'Պատրաստված 02.10.2026 18:00' (server time) comes before the last import '02.10.2026 22:00' (Yerevan time), so the report looks as if it was made before the data arrived.",
+  "evidence": "unzip of the sample: sheets Ամփոփում/SKU/Տվյալների որակ/Աղբյուրներ only; sharedStrings contain ⚠ NO_INVENTORY_SNAPSHOT, ⚠ NO_MARKETING_DATA, 'Պատրաստված 02.10.2026 18:00', last import '02.10.2026 22:00'; git: sample from 97c4f13 (2026-10-02), recon/advice/cash added in 60ede57, 826ef68, 2049c86 (up to 2026-10-09); WeeklyReportService.java:116 OffsetDateTime.now() vs formatInstant(Asia/Yerevan).",
+  "severity": "medium",
+  "replacement": "Ցույց տալ նմուշային հաշվետվության թարմ տարբերակը (6 թերթ՝ ներառյալ «Համադրում» և «Առաջարկներ», լրացված պաշարի, գովազդի և բանկի արհեստական տվյալներով)։ Նշել, որ թվերը արհեստական են և ոչ մի իրական խանութի չեն պատկանում։ (Before the first interview, regenerate the sample from the current code with synthetic inventory, Meta and bank files, and fix the time zone of 'Պատրաստված'.)",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ցույց տալ նմուշային հաշվետվությունը, որը պատրաստված է ծրագրի ընթացիկ տարբերակով՝ արհեստական վաճառքի, մնացորդների, գովազդի և բանկային տվյալներից (բոլոր թերթերը, ներառյալ «Համադրում»-ը և «Առաջարկներ»-ը, լրացված են)։ Նշել, որ թվերը **արհեստական** են և որևէ իրական խանութի չեն պատկանում։ (Before the first interview: regenerate the sample from current code with synthetic inventory snapshot, Meta campaign and bank statement imports so no NO_INVENTORY_SNAPSHOT/NO_MARKETING_DATA flags remain; fix WeeklyReportService.java:116 to format 'Պատրաստված' in Asia/Yerevan like formatInstant; save under a dated name, e.g. SAMPLE_weekly_report_synthetic_2026-10.xlsx, and update this line and app/README.md:62 to point to it.)",
+   "Ցույց տալ նմուշային հաշվետվության թարմ տարբերակը՝ բոլոր 6 թերթերով (Ամփոփում, SKU, Տվյալների որակ, Աղբյուրներ, Համադրում, Առաջարկներ), որտեղ լրացված են պաշարի օրերը, դանդաղ շրջանառվող ապրանքները, գովազդի ծախսը և բանկի վերջին հայտնի մնացորդը։ Ցույց տալուց առաջ ասել. «Թվերն արհեստական են և ոչ մի իրական խանութի չեն պատկանում. ձեր հաշվետվությունը կկազմվի միայն ձեր ֆայլերից»։\n\n(Note for the team, not for the script: do this before the first interview. First, change WeeklyReportService.java:116 from OffsetDateTime.now() to OffsetDateTime.now(ZoneId.of(\"Asia/Yerevan\")) so 'Պատրաստված' and 'Վերջին ներմուծում' use the same time zone. Second, create a synthetic inventory-snapshot file, since no fixture exists yet. Third, regenerate the sample from the current code using synthetic sales, inventory, app/src/test/resources/fixtures/synthetic_meta_campaign_daily.csv and synthetic_bank_statement.csv or synthetic_statement.sta. Then check that the NO_INVENTORY_SNAPSHOT and NO_MARKETING_DATA flags are gone. Save the result under a new dated name, and update the path here, in app/README.md:62 and in vault/00-Index/Backlog.md:35.)",
+   "- Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx`-ի ընթացիկ կոդով վերստեղծված տարբերակը՝ պաշարի, գովազդի և բանկի արհեստական ֆայլերով (որ երևան «Առաջարկներ» և «Համադրում» թերթերը և բանկի մնացորդը)։ Նշել, որ թվերն **արհեստական** են։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով նույնը պատրաստեմ»",
+  "problem": "'The same' report is an overpromise. From a sales file alone the report has no days of stock or slow movers (these need an inventory snapshot), no ad spend, no bank balance and no reconciliation. RESTOCK, SLOW_MOVER and AD_TEST all need on-hand stock, so the only recommendation possible is ASK_ACCOUNTANT. Gross profit appears only if the sales lines carry a cost column. The script also asks for real data before any storage or deletion terms are agreed (founder §10 Phase 0: agree data access and privacy terms first) and without warning that customer columns would be stored.",
+  "evidence": "KpiService.java:73,151 NO_INVENTORY_SNAPSHOT; RecommendationEngine.java: RESTOCK/SLOW_MOVER/AD_TEST all need x.onHand() != null; KpiService GP only from sale_lines.cogs_amount; ImportService stores all columns; CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md §10 'Կնքել տվյալների հասանելիության/գաղտնիության պայմաններ'.",
+  "severity": "medium",
+  "replacement": "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը՝ առանց գնորդների անուն/հեռախոսի սյունակների, որ ձեր իրական թվերով պատրաստեմ հաշվետվության վաճառքի (և, եթե ինքնարժեքը ֆայլում կա, շահույթի) մասը։ Պաշարի, գովազդի և բանկի մասերի համար հետո առանձին ֆայլեր կպետքեն։ Մինչ ուղարկելը կգրեմ, թե որտեղ է պահվելու ֆայլը և երբ կջնջվի»։",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի ցանկը և այսօրվա ապրանքների մնացորդը՝ առանց գնորդների անուն/հեռախոսի սյունակների, որ ձեր իրական թվերով պատրաստեմ հաշվետվության վաճառքի և պաշարի մասերը (շահույթը՝ եթե ինքնարժեքը ֆայլում կա)։ Գովազդի և բանկի մասերը կլինեն միայն, եթե այդ ֆայլերն էլ ուղարկեք։ Նախքան ուղարկելը գրավոր կտեղեկացնեմ, թե ինչ ուղով ուղարկել, որտեղ է պահվելու ֆայլը և երբ կջնջվի»։",
+   "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով նույն հաշվետվությունը պատրաստեմ (համախառն շահույթը՝ միայն եթե ֆայլում ինքնարժեք կա)։ Գնորդների անուն, հեռախոս, հասցե սյունակները հանեք արտահանումից առաջ. դրանք մեզ պետք չեն։ Մինչ ուղարկելը գրավոր կուղարկեմ, թե ինչ ուղով ուղարկել, որտեղ է պահվելու ֆայլը և երբ կջնջվի»։",
+   "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը՝ առանց գնորդների անվան և հեռախոսի սյունակների։ Ձեր իրական թվերով կպատրաստեմ հաշվետվության վաճառքի մասը (շահույթը՝ եթե ֆայլում ինքնարժեք կա). պաշարի, գովազդի և բանկի մասերի համար պետք կլինեն այլ ֆայլեր։ Ֆայլն ուղարկելուց առաջ գրավոր կնշեմ, թե որտեղ է այն պահվելու և երբ կջնջվի»։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։",
+  "problem": "'Դանդաղ շրջանառվող ապրանքներ' leaves out the worst cases. KpiService builds SKU rows only from sale lines in the period, so a product with stock and zero sales in the period does not appear in the report or the recommendations at all. Dead stock is exactly what interview question 7 probes. Separately, the offer never says what window the weekly report covers. With a 7-day window, daysWithSales < 14 always raises LOW_VELOCITY_SAMPLE ('weak estimate') and pushes every stock recommendation down to MEDIUM confidence. The runbook example uses a 30-day period.",
+  "evidence": "KpiService.java:87-95 perSku is filled only from sale_lines groups, :139-147 onHand is looked up only for those SKUs; :135,158 LOW_VELOCITY_SAMPLE when daysWithSales < 14; RecommendationEngine.build: LOW_VELOCITY_SAMPLE → Confidence.MEDIUM; PILOT_RUNBOOK.md --from=2026-09-01 --to=2026-09-30.",
+  "severity": "medium",
+  "replacement": "… պաշարի օրեր և դանդաղ շրջանառվող ապրանքներ (հաշվարկված վերջին <30> օրվա վաճառքով և միայն այն ապրանքների համար, որոնք այդ շրջանում վաճառք են ունեցել. ընդհանրապես չվաճառված, բայց պահեստում մնացող ապրանքները դեռ ավտոմատ չեն ցուցադրվում, դրանք ստուգում ենք ձեռքով), …",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- **Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր և դանդաղ շրջանառվող ապրանքներ (հաշվարկվում են վերջին 30 օրվա վաճառքով), գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։ Պիլոտի տարբերակում այն ապրանքները, որոնք այդ 30 օրում ընդհանրապես չեն վաճառվել, բայց պահեստում կան, ցուցակում դեռ չեն ներառվում։",
+   "**Շաբաթական Excel հաշվետվություն** հայերեն (թարմացվում է շաբաթը մեկ, թվերը հաշվարկվում են վերջին 30 օրվա տվյալներով)՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր և դանդաղ շրջանառվող ապրանքներ (միայն այն ապրանքների համար, որոնք այդ 30 օրում գոնե մեկ վաճառք կամ վերադարձ են ունեցել. ընդհանրապես չվաճառված, բայց պահեստում մնացող ապրանքները հաշվետվությունում դեռ չեն երևում), գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։ Եթե շրջանում վաճառքի օրերը 14-ից քիչ են, պաշարի գնահատականը նշվում է որպես թույլ։",
+   "**Շաբաթական Excel հաշվետվություն** հայերեն (թվերը՝ վերջին 30 օրվա համար)՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր և դանդաղ շրջանառվող ապրանքներ (միայն այդ 30 օրում վաճառված ապրանքների համար. առանց վաճառքի մնացած պաշարը դեռ չի ցուցադրվում), գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Բանկ ↔ վաճառք համադրում**՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։",
+  "problem": "Promised without its conditions. Internal transfers are recognised only if the client's own account numbers are registered (runbook step 1b) or statements for all accounts are imported. The 'mirrored pair' rule can also tag an unrelated equal debit and credit within 1 day as internal. Matching acquiring payments to sales is only PLAUSIBLE when the sales file has no payment method, and the current ՀԾ mapping does not include one. Acquiring lines are recognised through a vocabulary whose wording for Armenian banks is UNVERIFIED. The report also has no 'income' figure for transfers to be excluded from. The offer lists this item for every client, yet tier A does not include the bank at all.",
+  "evidence": "ReconciliationService.java mirrored pair: equal amount, different account, ≤ transferWindowDays=1; TOTAL_SALES_PROXY → PLAUSIBLE; Решения.md №12; docs/samples/mappings/hc_sales_v1.json has no payment_method; app/README.md 'Next: payment_method in the HC mapping'; BankDescriptionTagger 'UNVERIFIED wording for non-Ameriabank statements'; PILOT_RUNBOOK.md step 1b.",
+  "severity": "medium",
+  "replacement": "**Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում, փորձնական)՝ քարտային մուտքերը համեմատում ենք վաճառքի օրերի հետ։ Եթե վաճառքի ֆայլում վճարման եղանակը (կանխիկ/քարտ) չկա, համընկնումը նշվում է միայն որպես «հավանական»։ Սեփական հաշիվների միջև փոխանցումները առանձնացնում ենք, եթե տալիս եք ձեր բոլոր հաշիվների համարները կամ քաղվածքները։",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "**Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում, փորձնական)՝ քաղվածքի քարտային (էքվայրինգի) մուտքերը համեմատում ենք վաճառքի օրերի հետ։ Եթե վաճառքի ֆայլում վճարման եղանակ (կանխիկ/քարտ) չկա, համընկնումը նշվում է միայն որպես «հավանական», ոչ հաստատված։ Սեփական հաշիվների միջև փոխանցումները առանձնացնում ենք, եթե տալիս եք ձեր բոլոր հաշիվների համարները կամ բոլոր հաշիվների քաղվածքները։",
+   "**Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում, փորձնական)՝ քաղվածքի քարտային (էքվայրինգի) մուտքերը համեմատում ենք վաճառքի օրերի հետ։ Եթե վաճառքի ֆայլում վճարման եղանակը (կանխիկ/քարտ) չկա, համընկնումը նշվում է միայն որպես «հավանական»։ Էքվայրինգի մուտքերը ճանաչում ենք բանկի նշանակման տեքստով. ձեր բանկի ձևակերպումը առաջին շաբաթ ստուգում ենք միասին։ Սեփական հաշիվների միջև փոխանցումները առանձնացնում ենք, եթե տրամադրում եք ձեր բոլոր հաշիվների համարները կամ բոլոր հաշիվների քաղվածքները։ Նույն գումարով ելքն ու մուտքը տարբեր հաշիվներում կարող են սխալմամբ նշվել որպես փոխանցում, ուստի դրանց ցուցակը տալիս ենք ձեզ ստուգելու։",
+   "**Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ քաղվածքում ճանաչված քարտային (էքվայրինգի) մուտքերը համեմատում ենք օրվա վաճառքի հետ։ Եթե վաճառքի ֆայլում վճարման եղանակ (կանխիկ/քարտ) չկա, համընկնումը նշվում է միայն որպես «հավանական»։ Սեփական հաշիվների միջև փոխանցումները նշում ենք առանձին՝ ստուգելու համար, եթե տրամադրեք ձեր բոլոր հաշիվների համարները կամ քաղվածքները։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «հայտնաբերվել է ապրանք, որի գովազդը շահույթ չի բերում»։",
+  "problem": "The third example success criterion cannot be measured by the product and contradicts the offer's own rule against causal ad claims. Campaigns are not linked to products: contribution is computed at total level, there is no ROAS, and AD_TEST only computes a maximum acquisition cost per unit. Experiments are never tracked (experiment is always false). Meta numbers stay non-final for 28 days, which is the whole pilot. A client who adopts this criterion is guaranteed a 'failed' pilot or an unfounded attribution.",
+  "evidence": "V2__mappings_and_domain_tables.sql campaign_daily has no sku/product column; KpiService contribution = GP − variable − total spend; vault/40-Архитектура/Eval 20 кейсов — покрытие.md case 5 '❌ нет ROAS в KPI'; RecommendationEngine.java:72,131 experiment=false; ExplanationGuard 'no causal claims without an experiment'; ADS_NOT_FINAL 28 days.",
+  "severity": "medium",
+  "replacement": "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն մեկ ապրանքի համար որոշվել է մեկ վաճառքի ձեռքբերման արժեքի առավելագույն շեմը և համաձայնեցվել է սահմանափակ փորձարկման պլան»։",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն մեկ ապրանքի համար հաշվարկվել է մեկ վաճառքի ձեռքբերման արժեքի առավելագույն շեմը, և դուք որոշում եք կայացրել՝ փորձարկե՞լ գովազդն այդ շեմով, թե ոչ»։",
+   "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն մեկ ապրանքի համար հաշվարկվել է, թե մեկ վաճառքի համար գովազդին առավելագույնը որքան կարելի է ծախսել, և համաձայնեցվել է սահմանափակ փորձարկման պլան»։",
+   "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն մեկ ապրանքի համար հաշվարկվել և քննարկվել է մեկ վաճառքի ձեռքբերման արժեքի շեմը»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "6. Վերջին 3 ամսում եղե՞լ է դեպք, երբ ապրանքը վերջացել է, և հաճախորդը գնացել է։ Որքա՞ն վաճառք եք կորցրել, ըստ ձեր գնահատման։",
+  "problem": "This is a leading yes/no question: it describes our assumed pain (stockout, customer leaves) and invites agreement. The second part asks for a guess ('ըստ ձեր գնահատման'), and that guess alone earns the +2 row 'կոնկրետ կորուստ թվով'. A made-up number turns straight into points.",
+  "severity": "medium",
+  "replacement": "6. Պատմեք վերջին դեպքի մասին, երբ որևէ ապրանք պահեստում վերջացավ։ Ե՞րբ էր, ո՞ր ապրանքը, ինչպե՞ս իմացաք, և ի՞նչ արեցիք։ Քանի՞ օր այն չկար, և սովորաբար օրական քանի՞ հատ է վաճառվում՝ ըստ ՀԾ-ի, ոչ գնահատմամբ։",
+  "evidence": "01_Interview_script_HY.md:16, 48. Script rule line 3: 'Հարցնել անցյալի կոնկրետ դեպքերի մասին'.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Line 16:\n\"6. **Վերջին անգամ** երբ որևէ ապրանք վերջացավ (դարակում կամ պահեստում), ի՞նչ եղավ։ Ո՞ր ապրանքն էր, ե՞րբ, ինչպե՞ս իմացաք, և ի՞նչ արեցիք։ Քանի՞ օր այն չկար, և օրական սովորաբար քանի՞ հատ է վաճառվում՝ կարո՞ղ եք հիմա նայել ծրագրում կամ վաճառքի ցանկում։ *(Հարցազրուցավարին. նշել՝ թիվը ծրագրից է, թե մոտավոր գնահատում։)*\"\n\nScoring row, line 48:\n\"| Նկարագրեց վերջին 3 ամսվա կոնկրետ դեպք, և կորստի թիվը հաստատվեց ծրագրով/փաստաթղթով (ոչ գնահատմամբ) | +2 |\"",
+   "Line 16 → «6. Պատմեք վերջին դեպքի մասին, երբ որևէ ապրանք վերջացավ, իսկ նորը դեռ չէր հասել։ Ո՞ր ապրանքն էր, ե՞րբ, և ինչպե՞ս իմացաք, որ վերջացել է։ Քանի՞ օր այն չկար։ Ի՞նչ արեցին այն հաճախորդները, ովքեր հարցնում էին՝ այլ բա՞ն վերցրին, թե՞ գնացին։ Այդ ապրանքից սովորաբար օրական քանի՞ հատ եք վաճառում. եթե հնարավոր է, նայեք ՀԾ-ում, եթե ոչ՝ ասեք, որ մոտավոր է։» (Interviewer note: if no such case happened in the last 3 months, record that too, since it shows low pain.)\nLine 48 → «| Նկարագրեց վերջին 3 ամսվա կոնկրետ դեպք (ապրանք, ամսաթիվ, քանի օր չկար), և կորուստը հիմնված է ՀԾ-ի կամ փաստաթղթի թվերի վրա, ոչ «մոտավորապես» | +2 |». Add a note under the table: «Գնահատված թիվը գրանցել նշումներում, բայց միավոր չտալ։» (Record an estimated number in the notes, but give it no points.)",
+   "6. Պատմեք վերջին դեպքի մասին, երբ որևէ ապրանք վերջացավ։ Ե՞րբ էր, ո՞ր ապրանքը, ինչպե՞ս իմացաք, ի՞նչ արեցիք։ Քանի՞ օր չկար, և օրական սովորաբար քանի՞ հատ է վաճառվում (նշել՝ թիվը ծրագրից է, թե գնահատական)։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "| Նկարագրեց վերջին 3 ամսվա կոնկրետ կորուստ թվով | +2 |",
+  "problem": "Any number counts, including a guess prompted by Q6. The row does not require a dated incident or a number that could be checked against the client's file, so a polite estimate scores the same as real evidence.",
+  "severity": "medium",
+  "replacement": "| Նկարագրեց վերջին 3 ամսվա կոնկրետ դեպք (ամսաթիվ, ապրանք, ինչ արեց) և թիվ, որը կարելի է ստուգել իր ֆայլով | +2 |\n| Միայն ընդհանուր գնահատական («մոտ մեկ միլիոն») առանց դեպքի | 0 |",
+  "evidence": "01_Interview_script_HY.md:16, 48.",
+  "lens": "method",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "| Նկարագրեց վերջին 3 ամսվա կոնկրետ դեպք՝ ո՞ր ապրանքը, մոտավորապես ե՞րբ, ի՞նչ արեց հետո (կորստի թիվը կարող է լինել գնահատական) | +2 |\n| Միայն ընդհանուր գնահատական («ամիսը մոտ մեկ միլիոն ենք կորցնում»)՝ առանց կոնկրետ դեպքի | 0 |\n\nՖայլը ստանալուց հետո ստուգել՝ նշված ապրանքի վաճառքն այդ օրերին իսկապե՞ս ընդհատվել է։ Եթե ոչ՝ +2-ը հանել։",
+   "| Նկարագրեց վերջին 3 ամսվա կոնկրետ դեպք (երբ, որ ապրանքը, ինչ արեց) և կորուստը թվով | +2 |\n| Միայն ընդհանուր գնահատական («ամսական մոտ մեկ միլիոն»), առանց դեպքի | 0 |"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "| Արդեն վճարում է այլ լուծման/խորհրդատուի համար | +2 |",
+  "problem": "This row scores current spending, but Q11 only asks about past attempts and assumes they failed, so current spending is never asked. Q11 also counts 'լրացուցիչ ժամեր հաշվապահին', and nearly every shop pays an accountant. The row would fire almost every time and inflate the score.",
+  "severity": "medium",
+  "replacement": "| Հիմա ամսական վճարում է հենց վերլուծության/հաշվետվությունների համար (գումարը նշեց)՝ հաշվապահի սովորական վճարից բացի | +2 |",
+  "evidence": "01_Interview_script_HY.md:11, 23, 49.",
+  "lens": "method",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Line 49 (scoring row): \"| Հիմա վճարում է հենց այս խնդրի համար (ծրագիր, խորհրդատու կամ հաշվապահի լրացուցիչ ժամեր) և նշեց ամսական գումարը. հաշվապահի սովորական ամսավճարը չի հաշվվում | +2 |\"\n\nLine 23 (Q11, so the row has a question that supports it): \"11. Հիմա ինչո՞վ եք լուծում այս խնդիրը (Excel, խորհրդատու, ծրագիր, հաշվապահի լրացուցիչ ժամեր)։ Դրա համար ամսական ինչքա՞ն եք վճարում՝ հաշվապահի սովորական վճարից բացի։ Եթե նախկինում այլ բան եք փորձել և դադարեցրել, ինչքա՞ն արժեր և ինչու՞ դադարեցիք։\"",
+   "| Վճարել է կամ վճարում է այս խնդրի լուծման համար (գումարը նշեց)՝ հաշվապահի սովորական վճարից բացի | +2 |"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "11. Արդեն փորձե՞լ եք այն լուծել (Excel, խորհրդատու, ծրագիր, լրացուցիչ ժամեր հաշվապահին)։ Ինչքա՞ն եք վճարել, և ինչու չաշխատեց կամ ինչու դադարեցիք։",
+  "problem": "Three questions in one. It also assumes the attempt failed or stopped ('ինչու չաշխատեց կամ ինչու դադարեցիք'), so a working alternative the shop still pays for, which is the real competitor and the best price anchor, never comes up.",
+  "severity": "medium",
+  "replacement": "11. Վերջին տարում ի՞նչ եք արել այս խնդրի համար (Excel, խորհրդատու, ծրագիր, լրացուցիչ ժամեր հաշվապահին)։ Հիմա էլ օգտագործո՞ւմ եք։ → Ամսական ինչքա՞ն է դա արժենում՝ գումարով կամ ժամերով։ → Ի՞նչն է դրանում աշխատում, և ի՞նչը՝ ոչ։",
+  "evidence": "01_Interview_script_HY.md:23, 49.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "11. Վերջին տարում ի՞նչ եք փորձել այս խնդրի համար (Excel, խորհրդատու, ծրագիր, լրացուցիչ ժամեր հաշվապահին)։ Հիմա էլ օգտագործո՞ւմ եք։ Ամսական ինչքա՞ն եք ծախսում դրա վրա՝ գումարով կամ ժամերով։ Ի՞նչն է դրանում աշխատում, ի՞նչը՝ ոչ։ Եթե դադարեցրել եք՝ ինչո՞ւ։",
+   "11. Վերջին մեկ տարում ի՞նչ եք արել այդ խնդրի համար (Excel, խորհրդատու, ծրագիր, հաշվապահի լրացուցիչ ժամեր)։ → Դեռ օգտագործո՞ւմ եք։ → Ամսական որքա՞ն եք դրա վրա ծախսում՝ գումարով կամ ժամերով։ → Ի՞նչն է դրանում աշխատում, ի՞նչը՝ ոչ։ → Եթե դադարեցրել եք՝ ինչո՞ւ։ Եթե ոչինչ չեք արել՝ ինչո՞ւ։",
+   "11. Վերջին մեկ տարում ի՞նչ եք արել այս խնդիրը լուծելու համար (Excel, խորհրդատու, ծրագիր, լրացուցիչ ժամեր հաշվապահին)։ Հիմա էլ շարունակո՞ւմ եք։ Եթե այո՝ ամսական ինչքա՞ն եք դրա վրա ծախսում՝ գումար կամ ժամեր։ Ի՞նչն է աշխատել, ի՞նչը՝ ոչ։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "12. Կարո՞ղ եք ՀԾ-ից (կամ ձեր ծրագրից) արտահանել վաճառքի ցանկը Excel-ով։ Փորձե՞լ եք։ Ո՞վ կարող է դա անել։",
+  "problem": "'Կարո՞ղ եք' asks about ability, and the polite answer is always yes. The real columns are unknown (the test fixtures and mapping headers are synthetic, and the guide says columns must come from the client's real file), so a self-report about exportability says little. The script never asks to see the list on screen, which would turn a claim into something observed.",
+  "severity": "medium",
+  "replacement": "12. Վերջին անգամ ե՞րբ է որևէ մեկը ՀԾ-ից (կամ ձեր ծրագրից) ցանկ արտահանել Excel-ով։ Ո՞վ էր, ո՞ր ցանկը։ Կարո՞ղ ենք հիմա բացել վաճառքի ցանկը էկրանին և միասին նայել սյունակները։",
+  "evidence": "app/README.md Fixtures ('synthetic'). PILOT_RUNBOOK.md 'The sample headers are synthetic or assumed'. ROADMAP_HY.md §2 ('Սյունակների կազմը պետք է վերցնել հաճախորդի իրական ֆայլից').",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "12. Վերջին անգամ ե՞րբ է որևէ մեկը ՀԾ-ից (կամ ձեր ծրագրից) որևէ ցանկ արտահանել Excel-ով։ Ո՞վ էր, ո՞ր ցանկն էր, ինչի՞ համար։ Եթե ծրագիրը հիմա հասանելի է՝ կարո՞ղ եք էկրանին բացել վաճառքի և վերադարձի փաստաթղթերի ցանկը, որ միասին նայենք միայն սյունակների անունները (գնորդների տվյալներ մեզ պետք չեն)։",
+   "12. Վերջին անգամ ե՞րբ է որևէ մեկը ՀԾ-ից (կամ ձեր ծրագրից) որևէ ցանկ արտահանել Excel-ով։ Ո՞վ էր անում, և ո՞ր ցանկն էր։ Եթե ծրագիրը հիմա բաց է՝ կարո՞ղ ենք միասին բացել վաճառքի ցանկը և նայել միայն սյունակների անունները (տվյալները չեմ լուսանկարի և չեմ գրառի)։\n*(Հարցազրուցավարին. էկրանին ստուգել 13–15 հարցերի սյունակները՝ վճարման եղանակ, ինքնարժեք, ԱԱՀ։ Եթե ծրագիրը հասանելի չէ՝ գրանցել «չտեսա», ոչ «այո»։)*",
+   "12. Ե՞րբ է վերջին անգամ որևէ մեկը ՀԾ-ից (կամ ձեր ծրագրից) Excel-ով ցանկ արտահանել։ Ո՞վ էր, ո՞ր ցանկը։ Եթե երբեք՝ ո՞վ կարող է դա անել։ Եթե համակարգիչը մոտ է՝ կարո՞ղ ենք բացել վաճառքի ցանկը և միասին նայել սյունակները։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "18. «Այս հաշվետվությունից ո՞ր թիվը կօգներ ձեր վերջին որոշման ժամանակ, և ո՞րն է ավելորդ»",
+  "problem": "This is a hypothetical ('կօգներ'), which breaks the script's own rule 'Չհարցնել «կօգտագործեի՞ք»'. It is also two questions in one, and right after a demo it invites compliments. The answer is an opinion, not a fact about what the person had when they decided.",
+  "severity": "medium",
+  "replacement": "18. «Ձեր վերջին պատվերի որոշման ժամանակ (որը պատմեցիք) այս թվերից որո՞նք արդեն ունեիք, և որո՞նք՝ ոչ։ Որտեղի՞ց էիք վերցնում դրանք»։",
+  "evidence": "01_Interview_script_HY.md:35, 41.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "18. Նմուշի թվերը մեկ առ մեկ ցույց տալով՝ «Վերջին պատվերի կամ գովազդի որոշման ժամանակ, որի մասին պատմեցիք, այս թիվն ունեի՞ք։ Եթե այո՝ որտեղի՞ց էիք վերցնում, և ո՞վ էր այն հաշվում»։",
+   "18. «Վերադառնանք ձեր վերջին պատվերի (կամ գովազդի) որոշմանը, որը պատմեցիք։ Այստեղի ցուցանիշներից որո՞նք այդ պահին արդեն ունեիք, և որտեղի՞ց էիք վերցնում։ Իսկ որոնք չունեիք՝ դրանց փոխարեն ինչի՞ վրա հիմնվեցիք»։",
+   "18. «Երբ վերջին անգամ որոշում էիք, թե ինչ պատվիրել, այս թվերից որո՞նք արդեն ունեիք, և որո՞նք՝ ոչ»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "- Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` (նշել, որ թվերը **օրինակային** են)։",
+  "problem": "The sample is out of date (generated 02.10.2026) and cannot support the closing questions. It has only 4 sheets (Ամփոփում, SKU, Տվյալների որակ, Աղբյուրներ), with no Համադրում, no Առաջարկներ and no bank-balance block. It carries NO_INVENTORY_SNAPSHOT and NO_MARKETING_DATA, so days of stock show '—' and ad spend is empty. The very numbers tied to Q5 (ordering) and Q8 (ads), and the recommendations the offer sells, are missing. WeeklyReportService now produces 6 sheets.",
+  "severity": "medium",
+  "replacement": "- Ցույց տալ նմուշային հաշվետվությունը՝ վերագեներացված պահեստի մնացորդով, գովազդի ֆայլով և բանկային քաղվածքով (6 թերթ՝ ներառյալ «Համադրում» և «Առաջարկներ»), և նշել, որ թվերը **օրինակային** են։",
+  "evidence": "Unzipped SAMPLE_weekly_report_synthetic_2026-09.xlsx: workbook.xml lists 4 sheets. sharedStrings show '⚠ NO_INVENTORY_SNAPSHOT', '⚠ NO_MARKETING_DATA', 'Պատրաստված 02.10.2026'. WeeklyReportService.generate() writes summary, sku, quality, sources, recon, advice. ReportLabels.SHEET_RECON/SHEET_ADVICE.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- Հարցազրույցից առաջ վերագեներացնել նմուշային հաշվետվությունը ընթացիկ տարբերակով՝ սինթետիկ վաճառքով, պահեստի մնացորդով, գովազդի ծախսով և բանկային քաղվածքով, և ստուգել, որ այն ունի 6 թերթ (ներառյալ «Համադրում» և «Առաջարկներ») և չունի «NO_INVENTORY_SNAPSHOT» կամ «NO_MARKETING_DATA» նշումներ։ Ցույց տալ պաշարի օրերը (հարց 5), գովազդի ծախսը (հարց 8) և առաջարկները, և նշել, որ թվերը **օրինակային** են։",
+   "- Հարցազրույցից առաջ վերագեներացնել նմուշը ընթացիկ տարբերակով՝ սինթետիկ վաճառքի, պահեստի մնացորդի, գովազդի ծախսի և բանկային քաղվածքի տվյալներով (6 թերթ՝ ներառյալ «Համադրում» և «Առաջարկներ»)։ Ցույց տալ այդ նոր նմուշը, որտեղ երևում են պաշարի օրերը, գովազդի ծախսը, բանկի վերջին հայտնի մնացորդը և առաջարկները, և նշել, որ թվերը **օրինակային** են։ Հին `SAMPLE_weekly_report_synthetic_2026-09.xlsx`-ը (4 թերթ, 02.10.2026) ցույց չտալ։",
+   "- Ցույց տալ նմուշային հաշվետվության վերջին տարբերակը (`docs/samples/`)՝ պատրաստված սինթետիկ վաճառքի, մնացորդի, գովազդի և բանկային քաղվածքի ֆայլերով, որպեսզի «Պաշարի օրեր», «Համադրում» և «Առաջարկներ» մասերը դատարկ չլինեն։ Նշել, որ թվերը **օրինակային** են։"
+  ]
+ },
+ {
+  "document": "both",
+  "quote": "19. **Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով նույնը պատրաստեմ»։",
+  "problem": "(a) 'Կարո՞ղ եք' is again an ability question. (b) It asks only for sales, but the offer and guide 01 need balances and a COGS price list too, so 'նույնը' cannot be delivered: days of stock, slow movers and restock need a snapshot. (c) It promises free work before any price is said. (d) It does not say who does the export or book the joint export session the guides promise. (e) It does not remind the client to remove buyer names and phones or to use an agreed secure channel, before any data terms are signed (Art. 5 minimisation; founder §10 Phase 0).",
+  "severity": "medium",
+  "replacement": "19. «Եկեք պայմանավորվենք՝ <օր>-ին <ժամ>-ին 30 րոպե միասին արտահանենք վերջին 90 օրվա վաճառքի ցանկը, մնացորդները և ինքնարժեքով ապրանքացանկը՝ առանց գնորդների անուն/հեռախոսի, և ուղարկենք <անվտանգ ուղի>-ով։ Ո՞վ է նստելու ՀԾ-ի մոտ՝ դուք, թե՞ հաշվապահը»։",
+  "evidence": "docs/guides/01_HC_Trade_export_HY.md:3, 9-11, 21, 30-31. 02_Pilot_offer_HY.md:13. ReportLabels NO_INVENTORY_SNAPSHOT. Founder doc §10 ('Կնքել տվյալների հասանելիության/գաղտնիության պայմաններ'). vault Банки Армении.md Art. 5.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "19. **Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Եկեք օր նշանակենք՝ <օր>-ին <ժամ>-ին 30 րոպե զանգով միասին արտահանենք ձեր ծրագրից վերջին 90 օրվա վաճառքն ու վերադարձները, այսօրվա մնացորդները և ապրանքների ցանկը ինքնարժեքով, որ տեսնենք՝ ձեր իրական թվերով ինչ է ստացվում։ Գնորդների անուն/հեռախոսի սյունակները կհանենք արտահանումից առաջ, ֆայլը կուղարկեք <համաձայնեցված անվտանգ ուղի>-ով (ոչ հանրային չաթով), իսկ մինչ այդ ձեզ կուղարկեմ տվյալների գաղտնիության կարճ պայմանները։ Ո՞վ կնստի համակարգչի մոտ՝ դուք, թե՞ հաշվապահը»։",
+   "19. **Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Եկեք պայմանավորվենք՝ <օր>-ին <ժամ>-ին 30 րոպե միասին արտահանենք ՀԾ-ից վերջին 90 օրվա վաճառքի և վերադարձի ցանկը (ինքնարժեքի սյունակով, եթե այն վարվում է) և ապրանքների մնացորդներն այդ օրվա դրությամբ։ Գնորդների անուն/հեռախոսի սյունակները կհանենք արտահանումից առաջ, իսկ ֆայլը կուղարկենք <համաձայնեցված անվտանգ ուղի>-ով։ Մինչ այդ գրավոր կուղարկեմ, թե ինչ ենք անում ձեր տվյալների հետ և երբ ենք դրանք ջնջում։ Ո՞վ կնստի ՀԾ-ով աշխատող համակարգչի մոտ՝ դուք, թե՞ հաշվապահը»։\n(Գնահատման աղյուսակի տող 50-ը փոխել՝ «Համաձայնեց համատեղ արտահանման կոնկրետ օր և ժամ» +3։)",
+   "19. **Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Եկեք պայմանավորվենք՝ <օր>-ին <ժամ>-ին 30 րոպե միասին արտահանենք վերջին 90 օրվա վաճառքը, մնացորդները և ինքնարժեքը (եթե վարվում է)՝ առանց գնորդների անուն/հեռախոսի։ Մինչ այդ գրավոր կուղարկեմ տվյալների պաշտպանության պայմանները և ֆայլն ուղարկելու անվտանգ ուղին։ Ո՞վ է մասնակցելու՝ դուք, թե՞ հաշվապահը»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "9. Եղե՞լ է, որ հաշվապահի թվերը (շահույթ, մնացորդ) չեն համընկել ձեր պատկերացման հետ։ Ի՞նչ եղավ հետո։",
+  "problem": "A leading yes/no question that reads the roadmap's positioning statement back to the client ('հաշվապահի թվերը ինչու չեն համընկնում իր զգացողության հետ') and invites agreement. 'մնացորդ' is ambiguous: stock balance or bank balance.",
+  "severity": "medium",
+  "replacement": "9. Վերջին անգամ ե՞րբ եք նայել հաշվապահի տված շահույթի թիվը կամ բանկի մնացորդը։ Ի՞նչ որոշում կայացրիք դրանով։ Ի՞նչ հարց տվեցիք հաշվապահին այդ ժամանակ։",
+  "evidence": "ROADMAP_HY.md §1 'Ինչ խնդրի համար կվճարի'. 01_Interview_script_HY.md:19.",
+  "lens": "method",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "9. Վերջին անգամ ե՞րբ եք նայել հաշվապահի տված թվերը (ամսվա շահույթը, բանկային հաշվի մնացորդը կամ պահեստի մնացորդը)։ Ի՞նչ էիք ակնկալում տեսնել, և ի՞նչ տեսաք։ Ի՞նչ արեցիք դրանից հետո։\n   *(Եթե զրուցակիցը հաշվապահն է՝ «Վերջին անգամ ե՞րբ է սեփականատերը ձեզ հարց տվել ձեր ներկայացրած շահույթի կամ մնացորդի մասին։ Ի՞նչ էր հարցը, և ինչո՞վ ավարտվեց»։)*",
+   "9. Ի՞նչ թվեր է ձեզ տալիս հաշվապահը (օրինակ՝ շահույթ կամ վնաս, պահեստի մնացորդ, վճարվելիք հարկեր) և որքա՞ն հաճախ։ Պատմեք վերջին անգամի մասին. ի՞նչ արեցիք այդ թվերով։ Որևէ բան հարցրի՞ք հաշվապահին կամ ինքներդ վերստուգեցի՞ք։ Ինչո՞ւ, և ի՞նչ եղավ հետո։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "7. Կա՞ ապրանք, որը պահեստում երկար է մնում։ Ինչպե՞ս իմացաք։ Ի՞նչ արեցիք։",
+  "problem": "A generic present-tense yes/no question that every shop will answer 'yes' to. It leads toward our SLOW_MOVER feature and does not ask for a concrete, costed incident.",
+  "severity": "medium",
+  "replacement": "7. Վերջին անգամ ե՞րբ եք զեղչով վաճառել, վերադարձրել մատակարարին կամ դուրս գրել ապրանք, որը չէր վաճառվում։ Ո՞ր ապրանքն էր, ինչքա՞ն էր դրա ինքնարժեքը, և ինչպե՞ս նկատեցիք, որ այն չի վաճառվում։",
+  "evidence": "01_Interview_script_HY.md:17. RecommendationEngine SLOW_MOVER.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "7. Վերջին անգամ ե՞րբ եք զեղչով վաճառել, վերադարձրել մատակարարին կամ դուրս գրել չվաճառվող ապրանք։ Ո՞ր ապրանքն էր, մոտավորապես ինչքա՞ն գումար էր դրանում փակված (գնման գնով), և ինչքա՞ն կորցրիք զեղչի կամ դուրսգրման պատճառով։ Ինչպե՞ս և որքա՞ն ժամանակ անց նկատեցիք, որ այն չի վաճառվում։ (Եթե նման դեպք չի եղել՝ «Ի՞նչ եք սովորաբար անում այն ապրանքի հետ, որը չի վաճառվում»։)",
+   "7. Վերջին 3 ամսում եղե՞լ է դեպք, երբ նկատել եք, որ որևէ ապրանք չի վաճառվում և մնում է պահեստում։ Ո՞ր ապրանքն էր, ինչպե՞ս և ե՞րբ նկատեցիք, ի՞նչ արեցիք դրա հետ։ Ըստ ձեր գնահատման՝ որքա՞ն գումար էր դրանում կապված կամ որքա՞ն կորցրիք (զեղչ, վերադարձ, դուրսգրում)։",
+   "7. **Վերջին անգամ** ե՞րբ նկատեցիք, որ որևէ ապրանք չի վաճառվում և մնում է պահեստում։ Ո՞ր ապրանքն էր, ինչպե՞ս նկատեցիք, մոտավորապես ինչքա՞ն գումար էր դրա մեջ սառած, և ի՞նչ արեցիք։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "# Հարցազրույցի սցենար մանրածախ առևտրի սեփականատիրոջ/հաշվապահի հետ (30–40 րոպե)",
+  "problem": "One script is used for either role. Sections 2–3 (purchase and ad decisions, cost of the pain) are the owner's experience, so from an accountant they are hearsay. Section 4 (columns, payment method, COGS, VAT) is accountant or operator knowledge, so from an owner it is guesswork. Nothing tells the interviewer to mark unverified answers, yet the tracker records them as facts.",
+  "severity": "medium",
+  "replacement": "# Հարցազրույցի սցենար մանրածախ խանութի սեփականատիրոջ հետ (30–40 րոպե). բաժին 4-ին ցանկալի է մասնակցի ՀԾ-ով աշխատող հաշվապահը կամ օպերատորը։ Բաժին 4-ի այն պատասխանը, որը չեք տեսել էկրանին կամ ֆայլում, գրանցել «չստուգված»։",
+  "evidence": "01_Interview_script_HY.md:1, 14-31. Tracker columns 'Способ оплаты в экспорте', 'COGS в системе'.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "# Հարցազրույցի սցենար մանրածախ խանութի սեփականատիրոջ հետ (30–40 րոպե)\n\n**Ում հետ։** Բաժիններ 1–3-ը և 5-ը հարցնել սեփականատիրոջը՝ գնումների և գովազդի որոշում կայացնողին։ Բաժին 4-ին ցանկալի է, որ մասնակցի վաճառքի ծրագրով աշխատող հաշվապահը կամ օպերատորը։ Բաժին 4-ի այն պատասխանը, որը չեք տեսել էկրանին կամ ֆայլում, նշել «չստուգված»։",
+   "# Հարցազրույցի սցենար մանրածախ խանութի սեփականատիրոջ հետ (30–40 րոպե)\n\n**Ում հետ։** 1–3 և 5 բաժինները՝ սեփականատիրոջ հետ։ 4-րդ բաժնի 12–15 հարցերին ճշգրիտ կարող է պատասխանել միայն հաշվառման ծրագրում աշխատող մարդը (հաշվապահ կամ օպերատոր)։ Ցանկալի է, որ նա մասնակցի այդ բաժնին։ Եթե պատասխանը չեք տեսել էկրանին կամ ֆայլում, նշել «չստուգված» և հաստատել արտահանման ֆայլով (հարց 19) կամ `docs/guides/04_Accountant_formulas_checklist_HY.md` ցուցակով։",
+   "# Հարցազրույցի սցենար մանրածախ խանութի սեփականատիրոջ հետ (30–40 րոպե)\n\n*Բաժին 4-ին ցանկալի է մասնակցի ծրագիրը վարող աշխատակիցը (հաշվապահ կամ օպերատոր)։ 12–15 հարցերի այն պատասխանները, որոնք չեք տեսել էկրանին կամ ֆայլում, նշել «չստուգված»։*"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Վճարումը՝ միացումը սկզբում, 4 շաբաթը՝ երկրորդ շաբաթվա վերջում, եթե առաջին երկու հաշվետվությունները օգտակար են։",
+  "problem": "The 4-week payment depends on a subjective 'օգտակար', the same kind of opinion signal the script rejects. A client can turn the paid pilot into a free trial without saying why, so a non-payment teaches nothing. The success criteria agreed at the start are not linked to payment.",
+  "severity": "medium",
+  "replacement": "Վճարումը՝ միացումը պայմանագիրը ստորագրելիս, 4 շաբաթի վճարը՝ երկրորդ շաբաթվա վերջում։ Եթե առաջին երկու հաշվետվությունները չեն համապատասխանում սկզբում համաձայնեցված չափանիշներին, 4 շաբաթի վճարը չեք կատարում և գրավոր նշում եք, թե որ չափանիշը չկատարվեց։",
+  "evidence": "02_Pilot_offer_HY.md:34, 36-37. 01_Interview_script_HY.md:41.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Վճարումը՝ միացումը սկզբում, 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում։ Եթե առաջին երկու հաշվետվություններից հետո որոշեք չշարունակել, 4 շաբաթվա վճարը չեք կատարում, պիլոտը դադարում է, և գրավոր նշում եք պատճառը՝ որ թիվն էր սխալ կամ ավելորդ, կամ սկզբում համաձայնեցված չափանիշներից որն այլևս իրատեսական չէ։",
+   "Վճարումը՝ միացումը պիլոտի մեկնարկին, 4 շաբաթի վճարը՝ երկրորդ շաբաթվա վերջում։ Մեկնարկին գրավոր համաձայնեցնում ենք նաև երկրորդ շաբաթվա ստուգման չափանիշը (օրինակ՝ «առաջին երկու հաշվետվությունները ստացվել են ժամանակին», «հաշվետվությունում կա առնվազն մեկ թիվ կամ առաջարկ, որը մինչ այդ չգիտեիք»)։ Եթե այդ չափանիշը չի կատարվել, 4 շաբաթի վճարը չեք կատարում և գրավոր նշում եք, թե որը չկատարվեց։ Կարող եք դադարեցնել ցանկացած պահի։",
+   "Վճարումը՝ միացումը սկզբում, 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում, եթե որոշեք շարունակել։ Եթե չշարունակեք, խնդրում ենք գրավոր նշել պատճառը։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "| Բ. Ա + բանկային համադրում + շաբաթական զանգ հաշվապահի մասնակցությամբ | 250 000 դրամ | 149 000 դրամ |",
+  "problem": "'Ինչ եք ստանում' lists 'Բանկ ↔ վաճառք համադրում' and a weekly '20 րոպե զանգ' for every client, and the report bullet includes the bank balance. Option Ա therefore seems to include what Բ charges +130k/+70k for, so a client's choice between Ա and Բ says nothing about willingness to pay for reconciliation. The offer also does not say that without a payment method in the sales file reconciliation is only 'հավանական'.",
+  "severity": "medium",
+  "replacement": "«Ինչ եք ստանում» բաժնում՝ «- **Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ. եթե վաճառքի ֆայլում վճարման եղանակը չկա, համադրումը ցույց է տալիս միայն «հավանական» համընկնում։» և «- **20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Բ տարբերակում՝ հաշվապահի մասնակցությամբ)։»",
+  "evidence": "02_Pilot_offer_HY.md:6, 8, 10, 31-32. Решения.md #12. WeeklyReportService reconSheet method text.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Line 8: «- **Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ, էքվայրինգի մուտքերը համեմատվում են քարտային վաճառքի հետ։ Եթե վաճառքի ֆայլում վճարման եղանակը նշված չէ, մուտքը համեմատվում է օրվա ընդհանուր վաճառքի հետ, և համընկնումը նշվում է միայն որպես «հավանական»։»\nLine 10: «- **20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Բ տարբերակում՝ հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։»\nLine 6, the end of the bullet: «… բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով (եթե տրամադրել եք բանկային քաղվածք)։»",
+   "Տող 6՝ «...դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս. Բ տարբերակում՝ նաև բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։»\nՏող 8՝ «- **Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ, էքվայրինգի մուտքերը համեմատվում են քարտային վաճառքի հետ։ Եթե վաճառքի ֆայլում վճարման եղանակը (կանխիկ/քարտ) չկա, մուտքը համեմատվում է օրվա ընդհանուր վաճառքի հետ և նշվում է միայն որպես «հավանական», ոչ «համադրված»։»\nՏող 10՝ «- **20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Բ տարբերակում՝ հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։»\nՏող 13՝ «...գովազդի ծախսի արտահանում, Բ տարբերակում՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940)։»",
+   "Line 6: \"- **Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս. Բ տարբերակում՝ նաև բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։\"\nLine 8: \"- **Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ. եթե վաճառքի ֆայլում վճարման եղանակը չկա, համընկնումը նշվում է միայն որպես «հավանական»։\"\nLine 10: \"- **20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Բ տարբերակում՝ հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։\"\nLine 13: replace \"կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)\" with \"Բ տարբերակում՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940)\"."
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Գինը ԱԱՀ-ո՞վ է ներառված։ Կազմակերպությունը ԱԱՀ վճարո՞ղ է։",
+  "problem": "The first sentence is ungrammatical. It mixes two constructions: 'Գինը ԱԱՀ-ո՞վ է' (is the price with VAT) and 'ԱԱՀ-ն ներառվա՞ծ է' (is VAT included). Both sentences also break the article rule before a vowel ('Գինն ԱԱՀ…', 'Կազմակերպությունն ԱԱՀ…'). The wording also differs from the accountant checklist, which asks the same question as 'ԱԱՀ-ով են, թե առանց'.",
+  "evidence": "docs/guides/04_Accountant_formulas_checklist_HY.md items 1.1-1.2 use 'ԱԱՀ-ով են, թե առանց' and list the non-payer options (շրջանառության հարկ / միկրո).",
+  "severity": "medium",
+  "replacement": "Ծրագրում գները ԱԱՀ-ո՞վ են, թե առանց ԱԱՀ-ի։ Ձեր կազմակերպությունն ԱԱՀ վճարո՞ղ է, թե շրջանառության հարկ է վճարում։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ծրագրից արտահանվող վաճառքի գումարները ԱԱՀ-ո՞վ են, թե առանց ԱԱՀ-ի։ Ձեր կազմակերպությունն ԱԱՀ վճարո՞ղ է, թե շրջանառության հարկ է վճարում կամ միկրոձեռնարկատիրության սուբյեկտ է։",
+   "15. Ձեր կազմակերպությունն ԱԱՀ վճարո՞ղ է, թե շրջանառության հարկ է վճարում կամ միկրոձեռնարկատիրության սուբյեկտ է։ Վաճառքի ցանկում գումարները ԱԱՀ-ո՞վ են, թե առանց ԱԱՀ-ի։",
+   "Ծրագրում վաճառքի գներն ԱԱՀ-ո՞վ են, թե առանց։ Ձեր կազմակերպությունն ԱԱՀ վճարո՞ղ է։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Նպատակը **չի** վաճառքը։",
+  "problem": "Grammatical error. A noun predicate is negated with 'չէ', not 'չի' ('չի' goes with a verb: 'չի վաճառում'). The word order is also wrong.",
+  "evidence": "01_Interview_script_HY.md line 3.",
+  "severity": "medium",
+  "replacement": "Նպատակը վաճառելը **չէ**։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Նպատակը վաճառելը **չէ**։ (equally correct, staying closer to the original wording: «Նպատակը վաճառքը **չէ**։»)",
+   "Նպատակը վաճառելը **չէ**, այլ պարզելը՝ (1) խնդիրը իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը։ (Smaller fix: «Նպատակը վաճառելը **չէ**։» or «Նպատակը վաճառքը **չէ**։»)"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։",
+  "problem": "This is one 40-word sentence with five unexplained accounting terms ('մաքուր վաճառք', 'համախառն շահույթ', 'պաշարի օրեր' and others), so a shop owner cannot follow it. 'ապրանքներ ըստ շահույթի' says the products are ranked by profit, but the report ranks them by net sales. The bank balance appears here as if it came with every option, although the price table puts bank work only in option Բ.",
+  "evidence": "WeeklyReportService.java lines 181-182 sort the SKU sheet by netSales(); app/README.md line 60 says 'SKU (sorted by net sales)'. Net sales formula: WeeklyReportService line 122. The price table (offer line 31) excludes bank work from option Ա.",
+  "severity": "medium",
+  "replacement": "**Շաբաթական Excel հաշվետվություն՝ հայերեն**. մաքուր վաճառք (վաճառք՝ հանած զեղչերն ու վերադարձները, առանց ԱԱՀ-ի), համախառն շահույթ (մաքուր վաճառք՝ հանած ապրանքի ինքնարժեքը, այն ապրանքների համար, որոնց ինքնարժեքը հայտնի է), ապրանքների ցանկ՝ դասավորված ըստ մաքուր վաճառքի՝ յուրաքանչյուրի շահույթով, պաշարի օրեր (քանի օր կբավարարի ներկայիս մնացորդը), դանդաղ վաճառվող ապրանքներ, գովազդի ծախս։ Բ տարբերակում՝ նաև բանկային հաշվի վերջին հայտնի մնացորդը՝ ամսաթվով և աղբյուրով։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- **Շաբաթական Excel հաշվետվություն՝ հայերեն**.\n  - մաքուր վաճառք՝ վաճառքը հանած զեղչերն ու վերադարձները (առանց ԱԱՀ-ի, եթե հայտնի է՝ գները ներառում են ԱԱՀ, թե ոչ),\n  - համախառն շահույթ՝ մաքուր վաճառքը հանած ապրանքի ինքնարժեքը (միայն այն ապրանքներով, որոնց ինքնարժեքը հայտնի է),\n  - ապրանքների ցանկ՝ դասավորված ըստ մաքուր վաճառքի, յուրաքանչյուրի համար՝ շահույթը, եթե ինքնարժեքը հայտնի է,\n  - պաշարի օրեր՝ քանի օր կբավարարի մնացորդը ներկայիս վաճառքի տեմպով, և դանդաղ վաճառվող ապրանքներ (պաշարը՝ 90 օրից ավելի),\n  - գովազդի ծախս,\n  - Բ տարբերակում, եթե տրամադրել եք բանկային քաղվածք՝ բանկային հաշվի վերջին հայտնի մնացորդը՝ ամսաթվով և աղբյուրով։",
+   "**Շաբաթական Excel հաշվետվություն՝ հայերեն։** Ամփոփում՝ մաքուր վաճառք (վաճառք՝ հանած զեղչերն ու վերադարձները, առանց ԱԱՀ-ի, եթե ֆայլից պարզ է՝ գինը ներառում է ԱԱՀ, թե ոչ), համախառն շահույթ (մաքուր վաճառք՝ հանած ինքնարժեքը, միայն այն ապրանքներով, որոնց ինքնարժեքը հայտնի է) և գովազդի ծախս։ Ապրանքների աղյուսակ՝ դասավորված ըստ մաքուր վաճառքի, յուրաքանչյուրի շահույթով, մնացորդով և պաշարի օրերով (քանի օր կբավարարի մնացորդը ներկայիս վաճառքի տեմպով). 90 օրից ավելի պաշար ունեցող ապրանքները նշվում են որպես դանդաղ վաճառվող։ Բ տարբերակում՝ նաև բանկային հաշվի վերջին հայտնի մնացորդը՝ ամսաթվով և աղբյուրով (սա կանխիկ է, ոչ թե շահույթ)։",
+   "**Շաբաթական Excel հաշվետվություն՝ հայերեն**. մաքուր վաճառք (զեղչերից և վերադարձներից հետո), համախառն շահույթ (մաքուր վաճառք՝ հանած ինքնարժեքը, որտեղ ինքնարժեքը հայտնի է), յուրաքանչյուր ապրանքի վաճառքն ու շահույթը, պաշարի օրեր (քանի օր կբավականացնի մնացորդը վաճառքի ներկա տեմպով), դանդաղ վաճառվող ապրանքներ, գովազդի ծախս։ Բ տարբերակում՝ նաև բանկային հաշիվների վերջին հայտնի մնացորդը՝ ամսաթվով և աղբյուրով։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` (նշել, որ թվերը **օրինակային** են)։",
+  "problem": "The sample shown to the owner uses one word, 'ծածկույթ', for two different KPIs: 'COGS-ի ծածկույթ' (a percentage) and 'Ծածկույթ (contribution)' (an amount of money). Labels like gross sales, COGS and contribution are in English. The offer never mentions 'ծածկույթ', so the owner will ask about it and the script gives the interviewer no plain explanation. 'օրինակային' can also be heard as 'exemplary' rather than 'made up'.",
+  "evidence": "WeeklyReportService.java line 125 'COGS-ի ծածկույթ' (share of net sales with known cost) and line 128 'Ծածկույթ (contribution)' (gross profit − variable costs − ads). ReportLabels.java line 25 uses 'ծածկույթը' in a flag.",
+  "severity": "medium",
+  "replacement": "Ցույց տալ նմուշը և ասել. «Այս թվերը հորինված են, իրական խանութի չեն։ Երկու տող նման անուն ունեն. «COGS-ի ծածկույթ»-ը ցույց է տալիս, թե վաճառքի քանի տոկոսի ինքնարժեքն ենք իմանում, իսկ «Ծածկույթ»-ը՝ թե գովազդից, առաքումից և միջնորդավճարից հետո որքան գումար է ձեզ մնում»։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` նմուշը և ասել. «Այս թվերը հորինված են, իրական խանութի չեն»։ Եթե հարցնեն «ծածկույթ» բառի մասին, բացատրել. «Երկու տող նման անուն ունեն, բայց տարբեր բաներ են։ «COGS-ի ծածկույթ»-ը տոկոս է՝ վաճառքի որ մասի ինքնարժեքն է մեզ հայտնի։ «Ծածկույթ (contribution)»-ը գումար է՝ ինչքան է մնում վաճառքից ապրանքի ինքնարժեքը, գովազդը և պատվերի մոտավոր ծախսերը (առաքում, քարտի միջնորդավճար, վերադարձ) հանելուց հետո, բայց վարձից ու աշխատավարձից առաջ։ Եթե առաջին տոկոսը ցածր է, երկրորդ գումարը թերի է»։",
+   "- Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx` և ասել. «Թվերը հորինված են, իրական խանութի չեն»։ Եթե հարցնեն «ծածկույթ» բառի մասին՝ «COGS-ի ծածկույթ»-ը վաճառքի այն մասն է (տոկոսով), որի ինքնարժեքը հայտնի է, իսկ «Ծածկույթ (contribution)»-ը՝ ինքնարժեքից, գովազդից և պատվերի ենթադրյալ ծախսերից (առաքում, քարտի միջնորդավճար) հետո մնացած գումարը՝ վարձը, աշխատավարձը և հարկերը հանելուց առաջ։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Մինչև 3 քննարկելի առաջարկ** շաբաթական (համալրում, գովազդի սահմանափակ փորձարկում՝ ձեռքբերման արժեքի շեմով, դանդաղ ապրանքի վերանայում, հարց հաշվապահին)։",
+  "problem": "'ձեռքբերման արժեքի շեմ' is marketing jargon (CAC threshold), and a shop owner will read 'ձեռքբերում' as buying stock. 'դանդաղ ապրանք' is a calque of 'slow mover' and does not match the report's term 'դանդաղ շրջանառություն' or line 6's 'դանդաղ շրջանառվող'. 'քննարկելի առաջարկ' is awkward.",
+  "evidence": "TemplateExplanationProvider.java lines 43-52: AD_TEST gives the maximum spend per sale, and SLOW_MOVER advises reviewing the price or stopping restocking. ReportLabels/WeeklyReportService line 179 use 'Դանդաղ շրջանառություն'.",
+  "severity": "medium",
+  "replacement": "**Շաբաթական մինչև 3 առաջարկ՝ քննարկելու համար**. ապրանքի համալրում, գովազդի փոքր փորձ՝ նախապես որոշված սահմանով, թե մեկ վաճառքի համար գովազդի վրա առավելագույնը որքան կարելի է ծախսել, դանդաղ վաճառվող ապրանքի գնի կամ համալրման վերանայում, հարց հաշվապահին։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "**Շաբաթական մինչև 3 առաջարկ՝ ձեզ հետ քննարկելու համար** (համալրում, գովազդի սահմանափակ փորձարկում՝ մեկ վաճառքի համար գովազդի ծախսի հաշվարկված վերին սահմանով, դանդաղ շրջանառվող ապրանքի գնի կամ համալրման վերանայում, հարց հաշվապահին)։",
+   "**Շաբաթական մինչև 3 առաջարկ՝ քննարկելու համար** (ապրանքի համալրում, գովազդի սահմանափակ փորձարկում՝ հաշվարկված սահմանով, թե մեկ վաճառքի համար գովազդի վրա առավելագույնը որքան կարելի է ծախսել առանց վնասի, դանդաղ շրջանառվող ապրանքի գնի կամ համալրման վերանայում, հարց հաշվապահին)։",
+   "**Շաբաթական մինչև 3 առաջարկ** (համալրում, գովազդի սահմանափակ փորձարկում՝ մեկ վաճառքի համար գովազդի ծախսի առավելագույն սահմանով, դանդաղ շրջանառվող ապրանքի գնի կամ համալրման վերանայում, հարց հաշվապահին)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Բանկ ↔ վաճառք համադրում**՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։",
+  "problem": "'համադրում' (reconciliation) is jargon. The explanation after it covers only internal transfers, not what reconciliation actually does. The '↔' sign cannot be read aloud. The same feature is called 'բանկային համադրում' in the price table (line 32), so it has two names.",
+  "evidence": "WeeklyReportService.java lines 248-257: card sales are matched against acquiring credits, and an implied fee is computed (not the bank tariff). Internal transfers are excluded.",
+  "severity": "medium",
+  "replacement": "**Բանկի և վաճառքի համադրում** (միայն Բ տարբերակում)՝ ստուգում ենք, որ քարտով վաճառքի գումարները հասել են ձեր բանկային հաշվին, և հաշվարկում ենք, թե մոտավորապես որքան է պահել բանկը որպես միջնորդավճար։ Ձեր սեփական հաշիվների միջև փոխանցումները եկամուտ չենք համարում։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- **Բանկի և վաճառքի համադրում** (միայն Բ տարբերակում, անհրաժեշտ է բանկային քաղվածք)՝ ստուգում ենք, որ քարտով վաճառքի գումարները մուտքագրվել են ձեր բանկային հաշվին, ցույց ենք տալիս այն օրերը, որոնց համար մուտք չկա, և հաշվարկում ենք վաճառքի ու մուտքի տարբերությունը՝ որպես մոտավոր միջնորդավճար (ոչ բանկի պաշտոնական սակագինը)։ Եթե վաճառքի արտահանման մեջ վճարման եղանակը նշված չէ, համադրումը մոտավոր է։ Ձեր սեփական հաշիվների միջև փոխանցումները եկամուտ կամ ծախս չենք համարում։",
+   "**Բանկի և վաճառքի համադրում** (միայն Բ տարբերակում)՝ ստուգում ենք, թե քարտով վաճառքի որ օրերի գումարները հասել են ձեր բանկային հաշվին և որոնք՝ ոչ, և հաշվարկում ենք մոտավոր միջնորդավճարը՝ վաճառքի և բանկային մուտքի տարբերությունը (սա բանկի պաշտոնական սակագինը չէ)։ Դա հնարավոր է, եթե վաճառքի արտահանման մեջ նշված է վճարման եղանակը (կանխիկ/քարտ). հակառակ դեպքում միայն նշում ենք, որ մուտքը հավանաբար համապատասխանում է օրվա վաճառքին։ Ձեր սեփական հաշիվների միջև փոխանցումները եկամուտ կամ ծախս չենք համարում։",
+   "**Բանկային համադրում** (միայն Բ տարբերակում)՝ քարտով վաճառքը համեմատում ենք բանկային քաղվածքի մուտքերի հետ, ցույց ենք տալիս տարբերությունները և հաշվարկային միջնորդավճարը (եթե վաճառքի ֆայլում վճարման եղանակը նշված է)։ Սեփական հաշիվների միջև փոխանցումները չենք հաշվում որպես եկամուտ կամ ծախս։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "| Բ. Ա + բանկային համադրում + շաբաթական զանգ հաշվապահի մասնակցությամբ | 250 000 դրամ | 149 000 դրամ |",
+  "problem": "The row can be read as 'the weekly call exists only in option Բ', while line 10 promises a weekly 20-minute call to everyone. The reconciliation is named differently from line 8.",
+  "evidence": "02_Pilot_offer_HY.md line 10 vs line 32; line 8 says 'Բանկ ↔ վաճառք համադրում'.",
+  "severity": "medium",
+  "replacement": "| Բ. Ա + բանկի և վաճառքի համադրում + հաշվապահը մասնակցում է շաբաթական զանգին | 250 000 դրամ | 149 000 դրամ |",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "| Բ. Ա + բանկ ↔ վաճառք համադրում + ձեր հաշվապահը միանում է շաբաթական զանգին | 250 000 դրամ | 149 000 դրամ |",
+   "| Ա. Վաճառք + պահեստ + գովազդ + շաբաթական 20 րոպե զանգ | 120 000 դրամ | 79 000 դրամ |\n| Բ. Ա + բանկ ↔ վաճառք համադրում + հաշվապահի մասնակցություն շաբաթական զանգին | 250 000 դրամ | 149 000 դրամ |\n\nLine 8 should also say it is a Բ feature: \"- **Բանկ ↔ վաճառք համադրում** (տարբերակ Բ)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։\"",
+   "| Բ. Ա + բանկ ↔ վաճառք համադրում + հաշվապահի մասնակցություն շաբաթական զանգին | 250 000 դրամ | 149 000 դրամ |"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Ձեր տվյալները տեսանելի են միայն ձեր հաշվին (տվյալների բազայում տեխնիկապես առանձնացված)։",
+  "problem": "'ձեր հաշվին' implies the client has a user account or login, but the pilot has none. In this document 'հաշիվ' already means a bank account and an ad account, so the owner may read it as 'visible on your bank account'. The parenthesis is jargon.",
+  "evidence": "app/README.md line 4 'No UI'; PILOT_RUNBOOK.md title 'Pilot runbook (no UI)'. Isolation is PostgreSQL RLS per tenant (README line 4).",
+  "severity": "medium",
+  "replacement": "Ձեր տվյալները պահվում են մյուս հաճախորդների տվյալներից տեխնիկապես առանձին, և ուրիշի հաշվետվության մեջ չեն կարող հայտնվել։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են մյուս հաճախորդների տվյալներից և չեն կարող հայտնվել ուրիշի հաշվետվության մեջ։",
+   "Ձեր տվյալները տվյալների բազայում պահվում են մյուս հաճախորդների տվյալներից տեխնիկապես առանձին և չեն կարող հայտնվել այլ հաճախորդի հաշվետվության մեջ։ Դրանց հետ աշխատում ենք միայն մենք՝ ձեր շաբաթական հաշվետվությունը պատրաստելու համար։",
+   "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են մյուս հաճախորդների տվյալներից և չեն ներառվում նրանց հաշվետվություններում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։",
+  "problem": "Wrong verb. 'գործարկել' means to launch or put a machine or system into operation, and 'գործարկել գնում/վճարում' is not a natural Armenian combination.",
+  "evidence": "02_Pilot_offer_HY.md line 18.",
+  "severity": "medium",
+  "replacement": "Ձեր անունից ոչինչ չենք անում՝ ոչ ապրանք ենք պատվիրում, ոչ գովազդ ենք միացնում, ոչ էլ վճարում ենք կատարում։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ձեր անունից որևէ գործողություն չենք կատարում՝ ոչ գնումներ, ոչ գովազդ, ոչ վճարումներ։",
+   "Ձեր անունից ոչ մի գործողություն չենք կատարում՝ ոչ մատակարարից ապրանք ենք պատվիրում, ոչ գովազդ ենք միացնում, ոչ էլ վճարում ենք կատարում։",
+   "Ձեր անունից ոչ մի գործողություն չենք կատարում՝ ոչ գնում, ոչ գովազդի միացում, ոչ վճարում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Գովազդի «արդյունքը» կոչում ենք հավելյալ վաճառք միայն վերահսկվող փորձարկումից հետո։",
+  "problem": "The sentence is opaque to a shop owner: 'հավելյալ վաճառք' and 'վերահսկվող փորձարկում' are analytics jargon, and the word order is calqued from English.",
+  "evidence": "TemplateExplanationProvider.java line 26 ('հավելյալ վաճառքի ապացույց (հնարավոր է միայն փորձարկմամբ)'); ExplanationGuard.java line 26 bans causal phrasing.",
+  "severity": "medium",
+  "replacement": "Եթե գովազդից հետո վաճառքն աճել է, դա գովազդի արդյունք չենք համարում, քանի դեռ չենք ստուգել փոքր, նախապես պլանավորված փորձով։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Գովազդից հետո վաճառքի աճը գովազդի արդյունք չենք համարում, քանի դեռ դա չի ստուգվել սահմանափակ փորձարկմամբ, որտեղ համեմատվում է վաճառքը գովազդով և առանց գովազդի։",
+   "Եթե գովազդից հետո վաճառքն աճել է, դա դեռ չենք համարում գովազդի արդյունք։ Այդպես կարող ենք ասել միայն համեմատական փորձից հետո՝ երբ գովազդը միացված է միայն մի մասի համար (օրինակ՝ որոշ ապրանքների կամ շաբաթների), և վաճառքը համեմատում ենք մնացածի հետ։",
+   "Գովազդից հետո վաճառքի աճը գովազդի արդյունք չենք համարում, քանի դեռ այն չի ստուգվել համեմատական փորձարկմամբ՝ գովազդով և առանց գովազդի։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Պիլոտի ընթացքում արհեստական բանականության արտաքին ծառայություն **չի** օգտագործվում. բացատրությունները կազմվում են շաբլոնով։ Եթե հետագայում միացնենք, նախապես գրավոր կտեղեկացնենք և կհամաձայնեցնենք։",
+  "problem": "'շաբլոն' is a Russianism; the Armenian word is 'ձևանմուշ'. 'միացնենք' has no object. 'կհամաձայնեցնենք' has no object either, so it is unclear whether the client's consent is required or the change is merely 'coordinated'. That matters for cross-border transfer.",
+  "evidence": "LlmConfig.java line 22: llm.enabled defaults to false, and the class comment requires confirming the Art. 27 basis before enabling. vault/30-Интеграции/Банки Армении.md covers Art. 27.",
+  "severity": "medium",
+  "replacement": "Պիլոտի ընթացքում արհեստական բանականության արտաքին ծառայություն **չենք** օգտագործում. բացատրությունները կազմվում են նախապես գրված ձևանմուշներով։ Եթե հետագայում ուզենանք այդպիսի ծառայություն միացնել, նախապես գրավոր կտեղեկացնենք և կմիացնենք միայն ձեր գրավոր համաձայնությամբ։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Պիլոտի ընթացքում արհեստական բանականության արտաքին ծառայություն **չենք** օգտագործում. բացատրությունները կազմվում են նախապես գրված ձևանմուշներով։ Եթե հետագայում ուզենանք այդպիսի ծառայություն միացնել, նախապես գրավոր կտեղեկացնենք՝ նշելով, թե ինչ տվյալ և որ երկիր է փոխանցվում, և կմիացնենք միայն ձեր գրավոր համաձայնությամբ։ Առանց ձեր համաձայնության աշխատանքը շարունակվում է ձևանմուշներով։",
+   "Պիլոտի ընթացքում արհեստական բանականության արտաքին ծառայություն **չենք** օգտագործում. բացատրությունները կազմվում են նախապես պատրաստված ձևանմուշներով։ Եթե հետագայում ցանկանանք այդպիսի ծառայություն միացնել, նախապես գրավոր կտեղեկացնենք, թե ինչ տվյալներ և որ երկիր են փոխանցվելու, և կմիացնենք միայն ձեր գրավոր համաձայնությունից հետո։",
+   "Պիլոտի ընթացքում արհեստական բանականության արտաքին ծառայություն **չենք** օգտագործում. բացատրությունները կազմվում են պատրաստի ձևանմուշներով։ Եթե հետագայում որոշենք նման ծառայություն միացնել, նախապես կտեղեկացնենք և կմիացնենք միայն ձեր գրավոր համաձայնությամբ։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «հայտնաբերվել է ապրանք, որի գովազդը շահույթ չի բերում»։",
+  "problem": "'ընդունված է' is commonly read as 'it is customary', so the first criterion is ambiguous. 'բանաձևեր' is jargon for an owner. The third criterion is a causal claim about a product's ad that line 19 of the same offer rules out, and the product has no per-product ad attribution.",
+  "evidence": "There is no per-SKU ad allocation: the SKU sheet columns (WeeklyReportService line 178) have no ad spend. AD_TEST only computes max_acquisition_cost per SKU (RecommendationEngine line 69).",
+  "severity": "medium",
+  "replacement": "Օրինակ՝ «4 շաբաթում դուք ընդունել եք մեր առաջարկներից առնվազն 2-ը», «հաշվապահը հաստատել է հաշվարկի կանոնները», «առնվազն մեկ ապրանքի համար պարզ է, թե մեկ վաճառքի համար գովազդի վրա առավելագույնը որքան կարելի է ծախսել, որ վնասով չաշխատեք»։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Օրինակ՝ «4 շաբաթում դուք ընդունել եք մեր առաջարկներից առնվազն 2-ը», «հաշվապահը հաստատել է բանաձևերը (ԱԱՀ, ինքնարժեք, փոփոխական ծախսեր)», «առնվազն մեկ ապրանքի համար հաշվարկված է, թե մեկ վաճառքի համար գովազդի վրա առավելագույնը որքան կարելի է ծախսել՝ առանց վնասի»։",
+   "Օրինակ՝ «4 շաբաթում դուք ընդունել եք շաբաթական առաջարկներից առնվազն 2-ը», «հաշվապահը հաստատել է հաշվարկի բանաձևերը (ԱԱՀ, ինքնարժեք, փոփոխական ծախսեր)», «առնվազն մեկ ապրանքի համար հաշվարկված է, թե մեկ վաճառքի համար գովազդի վրա առավելագույնը որքան կարելի է ծախսել, որպեսզի այդ վաճառքը վնասով չլինի»։",
+   "Օրինակ՝ «4 շաբաթում դուք ընդունել եք առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն մեկ ապրանքի համար հաշվարկված է, թե մեկ վաճառքի համար գովազդի վրա առավելագույնը որքան կարելի է ծախսել, որ այդ վաճառքը վնասով չլինի»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Եթե այո՝ «Պիլոտի պայմանները կուղարկեմ. կարո՞ղ ենք <օր> 20 րոպե խոսել հաշվապահի հետ բանաձևերի մասին»։",
+  "problem": "This sentence is read aloud to the owner. 'պիլոտ' is a loanword the owner may not understand, and 'բանաձևերի մասին' is jargon. It is the owner who must arrange the accountant call, but the sentence does not ask them to. The duration (20 min) differs from the offer (20–30 min), and the placeholder '<օր>' means 'day', not 'date'.",
+  "evidence": "02_Pilot_offer_HY.md line 15 says '20–30 րոպե'; guide 04 lists VAT, COGS and variable costs as the items to confirm.",
+  "severity": "medium",
+  "replacement": "Եթե այո՝ «Կուղարկեմ 4 շաբաթվա փորձնական աշխատանքի պայմանները։ Կարո՞ղ եք <ամսաթիվ>-ին կազմակերպել 20–30 րոպե զանգ ձեր հաշվապահի հետ, որ ճշտենք՝ ինչպես եք հաշվում ԱԱՀ-ն, ինքնարժեքը և առաքման ու քարտի միջնորդավճարի ծախսերը»։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Եթե այո՝ «Կուղարկեմ 4 շաբաթվա պիլոտի (փորձնական շրջանի) պայմանները։ Մինչև առաջին հաշվետվությունն անհրաժեշտ է 20–30 րոպեանոց զանգ ձեր հաշվապահի հետ, որ հաստատենք՝ ինչպես հաշվել ԱԱՀ-ն, ինքնարժեքը և փոփոխական ծախսերը (առաքում, քարտով վճարման միջնորդավճար)։ Կարո՞ղ եք <օր>-ին կազմակերպել այդ զանգը»։",
+   "Եթե այո՝ «Կուղարկեմ 4 շաբաթվա փորձնական աշխատանքի (պիլոտի) պայմանները։ Կարո՞ղ եք մինչև <օր> կազմակերպել 20–30 րոպե զանգ ձեր հաշվապահի հետ, որ ճշտենք՝ ինչպես են ձեզ մոտ հաշվվում ԱԱՀ-ն, ինքնարժեքը և առաքման ու քարտային վճարման միջնորդավճարները»։",
+   "Եթե այո՝ «Կուղարկեմ 4 շաբաթվա փորձնական աշխատանքի պայմանները։ Կարո՞ղ եք <ամսաթիվ>-ին կազմակերպել 20–30 րոպեանոց զանգ ձեր հաշվապահի հետ, որ ճշտենք՝ ինչպես են հաշվվում ԱԱՀ-ն, ինքնարժեքը, առաքման ծախսը և քարտի միջնորդավճարը»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "«Ես ուսումնասիրում եմ, թե ինչպես են փոքր խանութները որոշում գնումները, գովազդը և գները։ Ոչինչ չեմ վաճառում այսօր։ Կարո՞ղ եմ նշումներ անել. անունը և խանութի անվանումը չեմ հրապարակի»։",
+  "problem": "'որոշել գնումները/գովազդը/գները' is a calque of 'decide purchases'; Armenian needs 'որոշել՝ ինչ գնել'. The word order in 'Ոչինչ չեմ վաճառում այսօր' is unnatural. 'անունը' does not say whose name. 'գրառումներ անել' is the natural phrase for taking notes.",
+  "evidence": "01_Interview_script_HY.md line 6 (the opening, read aloud).",
+  "severity": "medium",
+  "replacement": "«Ես ուսումնասիրում եմ, թե փոքր խանութներում ինչպես են որոշում՝ ինչ ապրանք գնել, որքան գովազդ տալ և ինչ գին դնել։ Այսօր ոչինչ չեմ վաճառում։ Կարո՞ղ եմ գրառումներ անել։ Ձեր անունը և խանութի անունը ոչ մի տեղ չեմ հրապարակի»։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "«Ես ուսումնասիրում եմ, թե փոքր խանութներում ինչպես են որոշում՝ ինչ ապրանք գնել, որտեղ և ինչքան գովազդ անել, ինչ գին դնել։ Այսօր ոչինչ չեմ վաճառում։ Կարո՞ղ եմ նշումներ անել։ Ձեր անունը և խանութի անվանումը ոչ մի տեղ չեմ հրապարակի»։",
+   "«Ես ուսումնասիրում եմ, թե փոքր խանութներում ինչպես են որոշում՝ ինչ ապրանք պատվիրել, երբ և որտեղ գովազդ անել, ինչ գին դնել։ Այսօր ոչինչ չեմ վաճառում։ Կարո՞ղ եմ գրառումներ անել։ Ձեր անունը և խանութի անվանումը ոչ մի տեղ չեմ հրապարակի»։",
+   "«Ես ուսումնասիրում եմ, թե փոքր խանութներում ինչպես են որոշում՝ ինչ ապրանք պատվիրել, որքան գովազդ տալ և ինչ գին դնել։ Այսօր ոչինչ չեմ վաճառում։ Կարո՞ղ եմ գրառումներ անել։ Ձեր անունը և խանութի անվանումը չեմ հրապարակի»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "**Վերջին անգամ** երբ ավելացրիք կամ դադարեցրիք գովազդը, ինչի՞ հիման վրա որոշեցիք։ Ինչպե՞ս իմացաք՝ արժե՞ր, թե ոչ։",
+  "problem": "The 'Վերջին անգամ երբ' calque appears again. 'ավելացրիք գովազդը' should be 'ավելացրիք գովազդի բյուջեն'. An embedded indirect question should not carry '՞' ('արժե՞ր').",
+  "evidence": "01_Interview_script_HY.md line 18.",
+  "severity": "medium",
+  "replacement": "Հիշեք **վերջին** անգամը, երբ գովազդի բյուջեն ավելացրիք կամ գովազդն անջատեցիք։ Ինչի՞ հիման վրա որոշեցիք։ Ինչպե՞ս հասկացաք՝ արժեր, թե ոչ։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Երբ **վերջին** անգամ ավելացրիք գովազդի ծախսը կամ դադարեցրիք գովազդը, ինչի՞ հիման վրա որոշեցիք։ Ինչպե՞ս իմացաք՝ արժեր, թե ոչ։",
+   "**Երբ վերջին անգամ** ավելացրիք գովազդի բյուջեն կամ դադարեցրիք գովազդը, ինչի՞ հիման վրա որոշեցիք։ Ինչպե՞ս հասկացաք՝ արժեր, թե ոչ։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Արդեն փորձե՞լ եք այն լուծել (Excel, խորհրդատու, ծրագիր, լրացուցիչ ժամեր հաշվապահին)։ Ինչքա՞ն եք վճարել, և ինչու չաշխատեց կամ ինչու դադարեցիք։",
+  "problem": "Three questions are packed into one sentence that cannot be read aloud. 'ինչու' is missing the question mark ('ինչո՞ւ'). 'չաշխատեց' is a calque of 'didn't work'. The list in parentheses has inconsistent case forms.",
+  "evidence": "01_Interview_script_HY.md line 23.",
+  "severity": "medium",
+  "replacement": "Արդեն փորձե՞լ եք լուծել այդ խնդիրը՝ Excel-ով, խորհրդատուի օգնությամբ, ծրագրով կամ հաշվապահի լրացուցիչ ժամերով։ Ինչքա՞ն արժեցավ։ Ինչո՞ւ այդ լուծումը չօգնեց, կամ ինչո՞ւ թողեցիք։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "11. Արդեն փորձե՞լ եք լուծել այդ խնդիրը, օրինակ՝ Excel-ով, խորհրդատուի կամ ծրագրի օգնությամբ, կամ հաշվապահին լրացուցիչ ժամեր վճարելով։ Ինչքա՞ն եք ծախսել դրա վրա։ Ինչո՞ւ չստացվեց, կամ ինչո՞ւ հրաժարվեցիք։",
+   "11. Արդեն փորձե՞լ եք լուծել այդ խնդիրը (օրինակ՝ Excel-ով, խորհրդատուի օգնությամբ, ծրագրով, հաշվապահի լրացուցիչ ժամերով)։ Ինչքա՞ն եք վճարել դրա համար։ Հիմա էլ օգտագործո՞ւմ եք։ Եթե ոչ՝ ինչո՞ւ հրաժարվեցիք։",
+   "Արդեն փորձե՞լ եք լուծել այդ խնդիրը (Excel, խորհրդատու, ծրագիր, հաշվապահի լրացուցիչ ժամեր)։ Ինչքա՞ն եք վճարել։ Ինչո՞ւ չօգնեց, կամ ինչո՞ւ թողեցիք։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Ապրանքների **ինքնարժեքը** վարվո՞ւմ է ծրագրում, թե միայն վաճառքի գինը։",
+  "problem": "'վարվել' is a Russian calque ('ведётся'). 'ինքնարժեք' needs a plain gloss for an owner. The '՞' sits on the wrong word for this sentence structure.",
+  "evidence": "01_Interview_script_HY.md line 28; guide 01 line 13 repeats the same calque ('չի վարվում').",
+  "severity": "medium",
+  "replacement": "Ծրագրում գրանցվա՞ծ է ապրանքների **ինքնարժեքը**՝ այսինքն ձեր գնած գինը, թե միայն վաճառքի գինն է։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Interview, line 28: \"14. Ծրագրում գրանցվա՞ծ է ապրանքների **ինքնարժեքը** (ինչ գնով եք ձեռք բերել), թե միայն վաճառքի գինը։\"  Guide 01, line 13: \"Եթե ինքնարժեքը ՀԾ-ում չի հաշվառվում՝ ասեք, կտանք առանձին XLSX՝ top-50 ապրանքի համար ձեռքով լրացնելու։\"",
+   "Ծրագրում վաճառքի գնից բացի գրանցվա՞ծ է նաև ապրանքների **ինքնարժեքը**, այսինքն՝ ինչ գնով եք դրանք ձեռք բերել։\n(Same fix for guide 01, line 13: \"Եթե ՀԾ-ում ինքնարժեքը գրանցված չէ՝ ասեք, կտանք առանձին XLSX՝ top-50 ապրանքի համար ձեռքով լրացնելու։\")",
+   "Ծրագրում ապրանքների **ինքնարժե՞քն** էլ է գրանցված (այսինքն՝ գնման գինը), թե միայն վաճառքի գինը։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Գովազդի հաշիվը ո՞ւմ անունով է, և ո՞վ ունի մուտք Ads Manager։",
+  "problem": "'մուտք ունենալ' is a calque of 'have access', and 'Ads Manager' lacks a case ending. Ads Manager is an English product name the owner may not recognise. 'հաշիվ' was just used for a bank account in question 16.",
+  "evidence": "01_Interview_script_HY.md lines 30-31; guide 02 refers to Meta Ads Manager.",
+  "severity": "medium",
+  "replacement": "Facebook/Instagram-ի գովազդային հաշիվը ո՞ւմ անունով է բացված, և ո՞վ կարող է մտնել Ads Manager (գովազդի կառավարման էջ)։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Facebook/Instagram-ի գովազդային հաշիվը ո՞ւմ անունով է բացված (ձե՞ր, աշխատակցի՞, թե՞ գովազդ վարող մասնագետի/գործակալության), և ո՞վ կարող է մտնել Ads Manager (գովազդի կառավարման էջ) ու այնտեղից ներբեռնել ծախսի հաշվետվությունը։",
+   "Գովազդային հաշիվը ո՞ւմ անունով է, և ո՞վ կարող է մտնել Ads Manager (գովազդների կառավարման բաժին)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի և մնացորդների արտահանում (Excel), գովազդի ծախսի արտահանում, կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)։ Ուղեցույցները կտանք, առաջին արտահանումն անում ենք միասին։",
+  "problem": "This is one long sentence with slashes, 'արտահանում' three times and unexplained formats (CSV, MT940). 'մնացորդ' does not say stock or bank balance. It also implies 90 days of stock balances, whereas only the current stock balance is needed.",
+  "evidence": "Guide 01 table row 2: stock balance is taken as of the export date. Guide 03 line 8 covers the format preference.",
+  "severity": "medium",
+  "replacement": "Առաջին շաբաթը՝ Excel ֆայլեր. (1) վերջին 90 օրվա վաճառքներն ու վերադարձները՝ ՀԾ-ից, (2) ապրանքների այսօրվա մնացորդը պահեստում, (3) վերջին 90 օրվա գովազդի ծախսը՝ Facebook/Instagram-ից։ Ցանկության դեպքում՝ նաև բանկային քաղվածքը (Excel, CSV կամ MT940 ձևաչափով)։ Յուրաքանչյուրի համար կտանք քայլ առ քայլ ուղեցույց, իսկ առաջին անգամ ֆայլերը կհանենք միասին։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Առաջին շաբաթը՝ հետևյալ ֆայլերը (Excel). 1) վաճառքներն ու վերադարձները վերջին 90 օրվա համար՝ ՀԾ-ից, 2) ապրանքների մնացորդն ըստ պահեստների՝ արտահանման օրվա դրությամբ, 3) գովազդի օրական ծախսը վերջին 90 օրվա համար՝ գովազդային հաշվից (Facebook/Instagram կամ TikTok)։ Ցանկության դեպքում՝ նաև բանկային քաղվածքը վերջին 90 օրվա համար (Excel, CSV կամ MT940 ձևաչափով, ոչ PDF)։ Յուրաքանչյուրի համար կտանք քայլ առ քայլ ուղեցույց, իսկ առաջին արտահանումը կանենք միասին։",
+   "Առաջին շաբաթը մեզ պետք են հետևյալ ֆայլերը (Excel)․\n- վաճառքներն ու վերադարձները վերջին 90 օրվա համար՝ ՀԾ-ից (ինքնարժեքի սյունակով, եթե այն վարում եք),\n- ապրանքների մնացորդն ըստ պահեստի՝ միայն արտահանման օրվա դրությամբ,\n- գովազդի ծախսը վերջին 90 օրվա համար՝ Facebook/Instagram-ի գովազդային կաբինետից (եթե գովազդ եք տալիս նաև TikTok-ում՝ նաև այնտեղից),\n- Բ տարբերակի դեպքում՝ նաև բանկային քաղվածքը վերջին 90 օրվա համար՝ ինտերնետ-բանկից Excel կամ CSV ձևաչափով (եթե չկա՝ բանկից պատվիրված MT940 ֆայլ)։ PDF քաղվածքը չենք կարող ավտոմատ կարդալ։\nՈւղեցույցները կտանք, իսկ առաջին անգամ արտահանումը կանենք միասին՝ զանգով։",
+   "Առաջին շաբաթը՝ Excel ֆայլեր. (1) ՀԾ-ից վերջին 90 օրվա վաճառքներն ու վերադարձները, (2) ապրանքների մնացորդն ըստ պահեստի՝ արտահանման օրվա դրությամբ, (3) Facebook/Instagram գովազդի ծախսը 90 օրվա համար, (4) կամընտիր՝ նույն շրջանի բանկային քաղվածքը (Excel, CSV կամ MT940)։ Ուղեցույցները կտանք, առաջին արտահանումն անում ենք միասին։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "20–30 րոպե հաշվապահի հետ՝ բանաձևերը հաստատելու համար (ԱԱՀ, ինքնարժեք, փոփոխական ծախսեր)։",
+  "problem": "'բանաձևերը հաստատել' and 'փոփոխական ծախսեր' are jargon for an owner. The sentence does not say this is a one-time call, so the owner may think it is weekly.",
+  "evidence": "Guide 04 line 3: 'Լրացվում է **մեկ անգամ** … 20–30 րոպե զանգով'. ReportLabels line 26 lists variable costs as delivery, commission and returns.",
+  "severity": "medium",
+  "replacement": "Մեկ անգամ՝ 20–30 րոպե զանգ ձեր հաշվապահի հետ, որ ճշտենք՝ ինչպես հաշվել ԱԱՀ-ն, ինքնարժեքը և յուրաքանչյուր պատվերի հետ կապված ծախսերը (առաքում, քարտի միջնորդավճար, վերադարձ)։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Մեկ անգամ՝ առաջին հաշվետվությունից առաջ, 20–30 րոպե զանգ ձեր հաշվապահի հետ, որ նա հաստատի հաշվարկի բանաձևերը՝ ԱԱՀ, ինքնարժեք և պատվերի փոփոխական ծախսեր (առաքում, վճարային միջնորդավճար, վերադարձ)։ Մինչ հաստատումը հաշվետվության թվերը նշվում են որպես չհաստատված։",
+   "Մեկ անգամ՝ առաջին հաշվետվությունից առաջ, 20–30 րոպե զանգ ձեր հաշվապահի հետ, որ նա հաստատի՝ ինչպես ենք հաշվում ԱԱՀ-ն, ինքնարժեքը և պատվերի փոփոխական ծախսերը (առաքում, վճարման միջնորդավճար, վերադարձ)։ Մինչ այդ հաշվետվության թվերը նշվում են «բանաձևերը դեռ հաստատված չեն»։",
+   "Մեկ անգամ՝ պիլոտի սկզբում, 20–30 րոպե զանգ ձեր հաշվապահի հետ, որպեսզի նա հաստատի հաշվարկի բանաձևերը (ԱԱՀ, ինքնարժեք, առաքման, միջնորդավճարների և վերադարձի ծախսեր)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Ձեր տվյալները տեսանելի են միայն ձեր հաշվին (տվյալների բազայում տեխնիկապես առանձնացված)։",
+  "problem": "This misstates who can access the data. In the pilot the client has no account at all: there is no UI (decision #6), and the operator runs every import and report through the CLI with --tenant=<id> (PILOT_RUNBOOK). The operator can read every tenant's data. RLS separates tenants from each other in queries, but it does not limit the operator. 'հաշիվ' can also be read as 'bank account'. A privacy statement has to name who has access.",
+  "severity": "medium",
+  "replacement": "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում դրանց հասանելիություն ունի միայն <անուն ազգանուն>-ը՝ ձեր հաշվետվությունը պատրաստելու համար։",
+  "evidence": "vault/00-Index/Решения.md #6 ('Пилоты без UI'). docs/PILOT_RUNBOOK.md:8-21. app/README.md:21-25 (RLS uses the transaction-local app.tenant_id that the caller sets). PilotCli.java takes the tenant as a parameter.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են մյուս հաճախորդների տվյալներից։ Պիլոտի ընթացքում համակարգ մուտք գործելու առանձին հնարավորություն ձեզ չի տրամադրվում. ձեր ֆայլերը ներմուծում և հաշվետվությունը պատրաստում է միայն <անուն ազգանուն>-ը։",
+   "Ձեր տվյալները տվյալների բազայում տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում ձեր ֆայլերին և տվյալներին հասանելիություն ունի միայն <անուն ազգանուն>-ը՝ ձեր հաշվետվությունը պատրաստելու համար։ Պատրաստի հաշվետվությունն ուղարկում ենք միայն ձեր նշած անձանց։",
+   "Համակարգում ձեր տվյալները տեխնիկապես առանձնացված են այլ հաճախորդների տվյալներից։ Պիլոտի ընթացքում դրանց հասանելիություն ունի միայն ձեր հաշվետվությունը պատրաստող մասնագետը (<անուն ազգանուն>)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "## Տվյալների պաշտպանություն",
+  "problem": "Nothing says where data is stored (country, hosting provider) or which channel files must come through. In practice the channel is likely email: guide 02 has Meta scheduled exports sent to 'մեր էլ. հասցեն'. If the mailbox, cloud storage or database is outside Armenia, that is a transfer under Art. 27. It needs consent or the purpose basis (27.1) and a destination on the adequacy list ԱՏՊՀ-001/24, or else the authority's permission (27.3). The notes say adequacy is still unchecked for these destinations. A client's lawyer will ask where bank statements go.",
+  "severity": "medium",
+  "replacement": "Ձեր ֆայլերն ընդունում ենք միայն <ուղի, օր.՝ գաղտնաբառով պաշտպանված արխիվ, գաղտնաբառը՝ առանձին ուղով>, իսկ տվյալները պահվում են <երկիր, մատակարար> սերվերում։ Եթե պահոցը կամ որևէ օգտագործվող ծառայություն գտնվում է ՀՀ-ից դուրս, այն նշված է այստեղ, և տվյալները փոխանցվում են միայն ձեր գրավոր համաձայնությամբ և «Անձնական տվյալների պաշտպանության մասին» օրենքի 27-րդ հոդվածի պահանջներին համապատասխան։",
+  "evidence": "vault/30-Интеграции/Банки Армении.md:41 (Art. 27.1-27.4, list ԱՏՊՀ-001/24) and :55 (Canada not checked). docs/guides/02_Meta_Ads_export_HY.md:19 (scheduled export to our e-mail). docs/guides/01_HC_Trade_export_HY.md:21 (only 'համաձայնեցված անվտանգ ուղով'). Founder doc §9 line 125 ('որտեղ են պահվում տվյալները և ում են փոխանցվում').",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "- Ֆայլերն ընդունում ենք միայն <ուղի, օր.՝ <հասցե> էլ. հասցեն, <մատակարար, երկիր>, որին հասանելիություն ունի միայն պիլոտի թիմը>։ Բանկային քաղվածքը մի ուղարկեք հանրային չաթով։\n- Ստացված ֆայլերը և տվյալների բազան պահվում են <երկիր, մատակարար> սերվերում։ Պիլոտում օգտագործվող բոլոր արտաքին ծառայությունները (էլ. փոստ, պահոց, սերվեր) իրենց երկրով նշված են այս էջում։\n- Եթե դրանցից որևէ մեկը ՀՀ-ից դուրս է, առաջին ֆայլը ստանալուց առաջ գրավոր ներկայացնում ենք փոխանցման իրավական հիմքը՝ ըստ «Անձնական տվյալների պաշտպանության մասին» օրենքի 27-րդ հոդվածի։",
+   "- Ֆայլերն ընդունում ենք միայն <ուղի, օր.՝ գաղտնաբառով պաշտպանված արխիվ, գաղտնաբառը՝ առանձին ուղով>։ Սովորական էլ. փոստով կարող է գալ միայն Meta-ի ավտոմատ արտահանումը, որում անձնական տվյալներ չկան։\n- Ձեր ֆայլերը և տվյալների բազան պահվում են <երկիր, մատակարար> սերվերում։ Մեր օգտագործած բոլոր արտաքին ծառայությունները (փոստ, ֆայլերի պահոց, հոստինգ) և դրանց երկրները թվարկված են պայմանագրի հավելվածում։\n- Անձնական տվյալներ (օր.՝ քաղվածքում գործընկերների անուններ) ՀՀ-ից դուրս փոխանցում ենք միայն «Անձնական տվյալների պաշտպանության մասին» օրենքի 27-րդ հոդվածով թույլատրված դեպքերում՝ պաշտպանության համարժեք մակարդակ ունեցող երկիր կամ լիազոր մարմնի թույլտվություն։",
+   "- Ֆայլերն ընդունում ենք <ուղի, օր.՝ գաղտնաբառով արխիվ էլ. փոստով, գաղտնաբառը՝ առանձին հաղորդագրությամբ>։ Ստացված ֆայլերը և տվյալները պահվում են <վայր և երկիր, օր.՝ մեր աշխատանքային համակարգչում՝ ՀՀ-ում / մատակարար, երկիր>։ ՀՀ-ից դուրս գտնվող ծառայություններ, որոնցով անցնում են ձեր ֆայլերը՝ <ցանկ (օր.՝ էլ. փոստի մատակարար, երկիր) կամ «չկան»>։ Նոր նման ծառայություն միացնում ենք միայն ձեր գրավոր համաձայնությամբ և «Անձնական տվյալների պաշտպանության մասին» ՀՀ օրենքի 27-րդ հոդվածի պահանջներին համապատասխան։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "## Տվյալների պաշտպանություն",
+  "problem": "The offer has no confidentiality commitment for the client's commercial data (sales, margins, COGS, bank balances, ad spend). It does not rule out secondary use: benchmarks, other clients, demos, or test fixtures. app/README.md says the synthetic fixture should be replaced with 'a real anonymized export when available', so client data could end up in the code repository. That needs the client's explicit consent, and today the offer does not ask for it. There is also no security-incident notification commitment. Clients and lawyers reasonably expect these items.",
+  "severity": "medium",
+  "replacement": "Ձեր վաճառքի, ինքնարժեքի, պահեստի, գովազդի և բանկային տվյալները գաղտնի ենք պահում. չենք փոխանցում երրորդ անձանց և չենք օգտագործում այլ հաճախորդների, համեմատական վիճակագրության, ծրագրի թեստավորման կամ ցուցադրման համար՝ առանց ձեր առանձին գրավոր համաձայնության։ Ձեր տվյալների հետ կապված անվտանգության միջադեպի դեպքում կտեղեկացնենք ձեզ անհապաղ, բայց ոչ ուշ, քան 72 ժամում։",
+  "evidence": "app/README.md:34-36 ('Replace with a real anonymized export when available'). The offer lines 22-26 have no confidentiality, secondary-use or incident clause.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Add under \"## Տվյալների պաշտպանություն\":\n- Ձեր վաճառքի, ինքնարժեքի, պահեստի, գովազդի և բանկային տվյալները գաղտնի են. դրանք օգտագործում ենք միայն ձեզ համար հաշվետվություն պատրաստելու նպատակով և չենք փոխանցում երրորդ անձանց, բացի պայմանագրում անվանված տեխնիկական մատակարարներից (օր.՝ սերվերի հոստինգ)։\n- Առանց ձեր առանձին գրավոր համաձայնության ձեր ֆայլերը կամ թվերը, այդ թվում՝ անանունացված տեսքով, չենք օգտագործում այլ հաճախորդների, համեմատական վիճակագրության, ծրագրի թեստային տվյալների կամ ցուցադրությունների համար։\n- Ձեր տվյալներին վերաբերող անվտանգության միջադեպի դեպքում կտեղեկացնենք ձեզ անհապաղ, բայց ոչ ուշ, քան 72 ժամում, և կնշենք՝ ինչ տվյալներ են տուժել և ինչ ենք ձեռնարկում։",
+   "- Ձեր վաճառքի, ինքնարժեքի, պահեստի, գովազդի և բանկային տվյալները գաղտնի ենք պահում և օգտագործում ենք միայն ձեզ համար հաշվետվություն պատրաստելու նպատակով։ Չենք փոխանցում երրորդ անձանց (բացառությամբ օրենքով պահանջվող դեպքերի) և չենք օգտագործում այլ հաճախորդների, համեմատական վիճակագրության, ցուցադրման կամ ծրագրի թեստավորման համար, նույնիսկ անանուն տեսքով, առանց ձեր առանձին գրավոր համաձայնության։\n- Ձեր տվյալներին վերաբերող անվտանգության միջադեպի դեպքում կտեղեկացնենք ձեզ անհապաղ, բայց ոչ ուշ, քան այն հայտնաբերելուց 72 ժամ անց՝ նշելով, թե որ տվյալներն են տուժել և ինչ քայլեր ենք ձեռնարկել։",
+   "- Ձեր վաճառքի, ինքնարժեքի, պահեստի, գովազդի և բանկային տվյալները գաղտնի են. չենք տրամադրում երրորդ անձանց (բացի օրենքով պահանջվող դեպքերից) և օգտագործում ենք միայն ձեր պիլոտի համար։ Ցանկացած այլ օգտագործում (ծրագրի թեստային տվյալ, ցուցադրում, համեմատություն այլ հաճախորդների հետ)՝ միայն ձեր առանձին գրավոր համաձայնությամբ։\n- Ձեր տվյալներին վերաբերող անվտանգության միջադեպ հայտնաբերելու դեպքում կտեղեկացնենք ձեզ 72 ժամվա ընթացքում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Բանկ ↔ վաճառք համադրում**՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։",
+  "problem": "Under 'Ինչ եք ստանում' with no qualifier, bank reconciliation and the bank balance (line 6) read as included in every option. The price table, however, puts bank reconciliation only in option Բ. An option-Ա client could claim reconciliation as a contracted deliverable. Line 13 also asks every client for 90 days of bank statements ('կամընտիր'), including option-Ա clients who do not need them. That conflicts with Art. 5 data minimisation.",
+  "severity": "medium",
+  "replacement": "**Բանկ ↔ վաճառք համադրում և բանկի վերջին հայտնի մնացորդ (միայն Բ տարբերակում)**՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ, եթե նշել եք ձեր բոլոր հաշիվները կամ տրամադրել եք երկու հաշիվների քաղվածքները։ (Line 13: «միայն Բ տարբերակի համար՝ բանկային քաղվածք (Excel/CSV կամ MT940)»։)",
+  "evidence": "docs/sales/02_Pilot_offer_HY.md:6, 8, 13 vs 31-32. Банки Армении.md:40 (Art. 5: no data the purpose does not need). Transfers are detected only for accounts registered with --own-account.add, or for mirrored pairs where both statements were imported (README:76-78, ReconciliationService.java:24-29), so the absolute 'չեն հաշվվում' needs the condition.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Line 6, remove from the general list: «, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով»։\n\nLine 8, replace with: «**Բանկ ↔ վաճառք համադրում (միայն Բ տարբերակում)**՝ քարտով վաճառքը համեմատում ենք բանկի հաշվին մուտք եղած գումարների հետ և ցույց ենք տալիս բանկի վերջին հայտնի մնացորդը՝ ամսաթվով և աղբյուրով։ Ձեր սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ կամ ծախս, եթե նախապես տվել եք ձեր բոլոր հաշիվների համարները կամ երկու հաշիվների քաղվածքները։»\n\nLine 13, replace with: «Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի և մնացորդների արտահանում (Excel), գովազդի ծախսի արտահանում։ Միայն Բ տարբերակում՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940) և ձեր սեփական հաշիվների ցանկը։ Ուղեցույցները կտանք, առաջին արտահանումն անում ենք միասին։»",
+   "Line 6: «**Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս։ Բ տարբերակում՝ նաև բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։»\nLine 8: «**Բանկ ↔ վաճառք համադրում (միայն Բ տարբերակում)**՝ քարտային մուտքերը համեմատում ենք վաճառքի օրերի հետ, իսկ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ կամ ծախս, եթե այդ հաշիվները մեզ նշել եք կամ փոխանցման երկու կողմի հաշիվների քաղվածքներն էլ տրամադրել եք։»\nLine 13: «Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի և մնացորդների արտահանում (Excel), գովազդի ծախսի արտահանում, իսկ միայն Բ տարբերակում՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940) և ձեր սեփական հաշիվների ցանկը։ Ա տարբերակում բանկային քաղվածք չենք խնդրում և չենք ներմուծում։ Ուղեցույցները կտանք, առաջին արտահանումն անում ենք միասին։»",
+   "Line 6, end: «…դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս։» (remove the bank balance here and move it to line 8).\nLine 8: «**Բանկ ↔ վաճառք համադրում (միայն Բ տարբերակ)**՝ բանկի վերջին հայտնի մնացորդ ամսաթվով և աղբյուրով։ Սեփական հաշիվների միջև այն փոխանցումները, որոնք հայտնաբերվում են ձեր նշած հաշվեհամարներով կամ երկու հաշվի քաղվածքների համընկնող գումարներով, եկամուտ չեն հաշվվում։»\nLine 13: «Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի և մնացորդների արտահանում (Excel), գովազդի ծախսի արտահանում, իսկ Բ տարբերակում՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940) և ձեր սեփական հաշիվների ցանկը։ Ուղեցույցները կտանք, առաջին արտահանումն անում ենք միասին։»"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "## Գինը (փորձնական)",
+  "problem": "The prices do not say whether VAT is included. They do not say who invoices: no legal entity or sole proprietor (ԱՁ), no ՀՎՀՀ, no tax status. That is the first thing the client's accountant will ask. 'փորձնական' is ambiguous: it can mean 'trial or pilot price' or 'experimental, may change'. The founder doc says these figures are an untested hypothesis (§12). The offer also has no validity date or start date, so the price can be held to indefinitely.",
+  "severity": "medium",
+  "replacement": "## Պիլոտային գին (առաջարկը վավեր է մինչև <ամսաթիվ>)\n…\nԳները նշված են ՀՀ դրամով, <ներառյալ / առանց> ԱԱՀ։ Հաշիվը դուրս է գրում <կազմակերպության/ԱՁ անվանում, ՀՎՀՀ>։ Պիլոտը սկսվում է պայմանագիրը ստորագրելու և միացման վճարը ստանալու օրվանից։",
+  "evidence": "docs/CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md:157 (§12: 'Սրանք ստուգված շուկայական գներ չեն'). docs/sales/02_Pilot_offer_HY.md:28-32.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "## Պիլոտային գին\nԱռաջարկը վավեր է մինչև <ամսաթիվ>։ Նշված գինն ամրագրված է պիլոտի 4 շաբաթվա համար և այդ ընթացքում չի փոխվում։\n\n| Տարբերակ | Միացում | 4 շաբաթ |\n|---|---|---|\n| Ա. … | 120 000 դրամ | 79 000 դրամ |\n| Բ. … | 250 000 դրամ | 149 000 դրամ |\n\nԳները նշված են ՀՀ դրամով՝ <ներառյալ ԱԱՀ 20% / ԱԱՀ չի հաշվարկվում, քանի որ կատարողը ԱԱՀ վճարող չէ>։ Կատարողը և հաշիվ դուրս գրողը՝ <կազմակերպության/ԱՁ անվանում>, ՀՎՀՀ՝ <…>։ Պիլոտը սկսվում է պայմանագիրը ստորագրելու և միացման վճարը ստանալու օրվանից։",
+   "## Պիլոտային գին (առաջարկը վավեր է մինչև <ամսաթիվ>)\n| Տարբերակ | Միացում | 4 շաբաթ |\n|---|---|---|\n| Ա. … | 120 000 դրամ | 79 000 դրամ |\n| Բ. … | 250 000 դրամ | 149 000 դրամ |\n\nԳները ՀՀ դրամով են, <ներառյալ 20% ԱԱՀ / ԱԱՀ չի հաշվարկվում, քանի որ մատակարարը ԱԱՀ վճարող չէ>։ Մատակարար՝ <կազմակերպության/ԱՁ անվանում>, ՀՎՀՀ <…>։ Վճարումը՝ անկանխիկ, էլեկտրոնային հաշիվ-ապրանքագրով։ 4 շաբաթը հաշվվում է միացման վճարը ստանալու օրվանից։ Այս գները գործում են միայն պիլոտի համար. պիլոտից հետո գինը համաձայնեցնում ենք առանձին։",
+   "## Պիլոտի գինը (առաջարկը վավեր է մինչև <ամսաթիվ>)\n…\nԳները <ԱԱՀ-ով են / առանց ԱԱՀ են / ԱԱՀ չի հաշվարկվում՝ մատակարարը ԱԱՀ վճարող չէ>։ Պայմանագիրը և վճարման հաշիվը՝ <կազմակերպության/ԱՁ անվանում, ՀՎՀՀ> անունից։ 4 շաբաթը հաշվվում է պայմանագիրը ստորագրելուց և միացման վճարը ստանալուց հետո։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «հայտնաբերվել է ապրանք, որի գովազդը շահույթ չի բերում»։",
+  "problem": "The third example success criterion promises per-product ad attribution and a causal claim ('the ad brings no profit') that the product cannot produce. KpiService sums ad spend for the whole period, campaign_daily has no SKU link, and AD_TEST only computes a maximum acquisition cost. Founder doc §7 says SKU allocation of ads is a method, not a fact, and that causality needs a controlled test. A client who agrees to this criterion can rightly call the pilot failed, and it invites exactly the unsupported causal statement the product guards against.",
+  "severity": "medium",
+  "replacement": "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն 1 ապրանքի համար հաշվարկվել է ձեռքբերման առավելագույն արժեքի շեմը, և համաձայնեցվել է գովազդի վերահսկվող փորձարկման ծրագիր»։",
+  "evidence": "app/src/main/java/am/retailai/kpi/KpiService.java:75 (sum(spend) over the period, not per SKU). V2 migration campaign_daily has no sku column. README:94-95 (AD_TEST = max acquisition cost). Founder doc §7 lines 98 and 101. ClaudeExplanationProvider SYSTEM_PROMPT and ExplanationGuard forbid causal claims without an experiment.",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն 1 ապրանքի համար հաշվարկվել է մեկ վաճառքի ձեռքբերման արժեքի շեմը (ենթադրությունները նշված), և համաձայնեցվել է գովազդի սահմանափակ փորձարկում այդ շեմով»։",
+   "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն 1 ապրանքի համար հաշվարկվել է ձեռքբերման առավելագույն արժեքի շեմը, և համաձայնեցվել է գովազդի սահմանափակ փորձարկում՝ այդ շեմով»։",
+   "Օրինակ՝ «4 շաբաթում ընդունված է առնվազն 2 առաջարկ», «հաշվապահը հաստատել է բանաձևերը», «առնվազն 1 ապրանքի համար հաշվարկվել է ձեռքբերման արժեքի շեմը»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "**Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով նույնը պատրաստեմ»։",
+  "problem": "This asks for real client data before any confidentiality or data-processing terms exist. The pilot terms are only sent at step 20. It gives no instruction to remove customer name or phone columns and names no channel. Because raw_payload keeps every column, any customer personal data in the export would be stored with no legal basis or retention limit. The founder doc's Phase 0 says to sign data access and confidentiality terms first. Commercially, building 'the same report' on real data for free gives away the work the paid setup fee is meant to cover.",
+  "severity": "medium",
+  "replacement": "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը՝ առանց գնորդների անուն/հեռախոս սյունակների, որ ձեր իրական թվերով ցույց տամ առաջին էջը։ Նախքան ֆայլն ուղարկելը կուղարկեմ գաղտնիության և տվյալների մշակման կարճ համաձայնագիր, և ֆայլը կբացեմ միայն այն ստորագրելուց հետո»։",
+  "evidence": "docs/sales/01_Interview_script_HY.md:36-37 and scoring rows :50-51. docs/CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md:131 (§10 Phase 0). ImportService.java:163-173 (all columns stored).",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "**Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով ցույց տամ հաշվետվության առաջին էջը։ Այսօր կուղարկեմ գաղտնիության և տվյալների մշակման կարճ համաձայնագիրը և արտահանման ուղեցույցը։ Արտահանումից հանեք գնորդների անուն, հեռախոս և հասցե սյունակները, իսկ ֆայլն ուղարկեք միայն համաձայնագիրը ստորագրելուց հետո՝ <ալիք>-ով»։",
+   "«Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով ցույց տամ հաշվետվության առաջին էջը։ Նախ ձեզ կուղարկեմ գաղտնիության և տվյալների մշակման կարճ համաձայնագիր. ֆայլը խնդրում եմ ուղարկել միայն այն ստորագրելուց հետո՝ <ալիք>-ով։ Արտահանելուց առաջ հանեք գնորդների անուն, հեռախոս, հասցե և այլ անձնական տվյալների սյունակները (տե՛ս ուղեցույց 01)»։",
+   "19. **Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը՝ առանց գնորդների անուն/հեռախոս սյունակների, որ ձեր իրական թվերով ցույց տամ «Ամփոփում» էջը։ Նախքան ֆայլն ուղարկելը կուղարկեմ գաղտնիության և տվյալների մշակման կարճ համաձայնագիր՝ ստորագրելու համար»։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "**Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։",
+  "problem": "Two claims in this bullet contradict the report. (1) 'Ապրանքներ ըստ շահույթի': the SKU sheet is sorted by net sales, and gross profit is only a column. (2) 'Հայերեն': labels are Armenian, but flags (⚠ FORMULAS_NOT_CONFIRMED), recommendation type and confidence (RESTOCK, HIGH), reconciliation statuses and notes, source status ('committed') and the data-quality 'Օրինակ' column (CommitService messages, e.g. \"SKU 'A-1045' seen for the first time…\") are in English, as the sample itself shows.",
+  "evidence": "WeeklyReportService.java:182 sorted by netSales().reversed(); sample sharedStrings: 'SKU 'A-1045' seen for the first time in HC_TRADE; check it is not an alias…', '⚠ FORMULAS_NOT_CONFIRMED', 'committed'; ReconciliationService notes in English ('No payment method in sales data…').",
+  "severity": "low",
+  "replacement": "**Շաբաթական Excel հաշվետվություն** (հայերեն, որոշ տեխնիկական կոդեր և նշումներ՝ անգլերեն)՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքների ցանկ՝ դասավորված ըստ մաքուր վաճառքի, յուրաքանչյուրի համախառն շահույթով, …",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "**Շաբաթական Excel հաշվետվություն** հայերեն (տեխնիկական կոդերը, համադրման և տվյալների որակի որոշ նշումներ՝ առայժմ անգլերեն)՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքների ցանկ՝ դասավորված ըստ մաքուր վաճառքի, յուրաքանչյուրի համախառն շահույթով, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։",
+   "- **Շաբաթական Excel հաշվետվություն**՝ հայերեն վերնագրերով և բացատրություններով (որոշ տեխնիկական կոդեր, կարգավիճակներ և բանկային համադրման նշումներ առայժմ անգլերեն են)՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքների ցանկ՝ դասավորված ըստ մաքուր վաճառքի, յուրաքանչյուրի համախառն շահույթով, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։",
+   "- **Շաբաթական Excel հաշվետվություն** (հիմնականում հայերեն, որոշ կոդեր և տեխնիկական նշումներ՝ անգլերեն)՝ մաքուր վաճառք, համախառն շահույթ (ընդհանուր և ըստ ապրանքների, որտեղ ինքնարժեքը հայտնի է), պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "| Բ. Ա + բանկային համադրում + շաբաթական զանգ հաշվապահի մասնակցությամբ | 250 000 դրամ | 149 000 դրամ |",
+  "problem": "The tiers contradict 'Ինչ եք ստանում'. That section promises the bank balance, the bank ↔ sales reconciliation and a weekly 20-minute call to every client, but tier A ('Վաճառք + պահեստ + գովազդ') excludes the bank, and the weekly call appears as a tier B feature. A tier A client can reasonably expect bank features and calls the price does not cover.",
+  "evidence": "docs/sales/02_Pilot_offer_HY.md lines 6, 8, 10 (no tier marking) vs lines 31-32.",
+  "severity": "low",
+  "replacement": "In 'Ինչ եք ստանում', mark the bank items as «(միայն Բ տարբերակում)», and change the call line to: «20 րոպե զանգ շաբաթական՝ թվերը քննարկելու (Ա՝ սեփականատիրոջ հետ, Բ՝ նաև հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։»",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Line 6: «- **Շաբաթական Excel հաշվետվություն** հայերեն՝ մաքուր վաճառք, համախառն շահույթ (որտեղ ինքնարժեքը հայտնի է), ապրանքներ ըստ շահույթի, պաշարի օրեր, դանդաղ շրջանառվող ապրանքներ, գովազդի ծախս։ Բ տարբերակում՝ նաև բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։»\nLine 8: «- **Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։»\nLine 10 (the founder must confirm that tier A includes a call): «- **20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Ա՝ ձեզ հետ, Բ՝ նաև հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։»\nLine 13, for consistency: change «կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)» to «Բ տարբերակում՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940)».",
+   "Make the edits below together, so every section of the offer describes the tiers the same way. They assume tier Ա keeps a weekly call with the owner. That is a founder decision. If Ա should have no call, remove the call from row Ա and mark line 10 «(միայն Բ տարբերակում)».\n\nLine 6: change the end of the sentence to «…գովազդի ծախս, իսկ Բ տարբերակում՝ նաև բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով։»\n\nLine 8: «**Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։»\n\nLine 10: «**20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Ա՝ սեփականատիրոջ հետ, Բ՝ նաև հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։»\n\nLine 13: replace «կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)» with «Բ տարբերակի համար՝ նաև բանկային քաղվածք (Excel/CSV կամ MT940)».\n\nTable rows:\n| Ա. Վաճառք + պահեստ + գովազդ + շաբաթական զանգ սեփականատիրոջ հետ | 120 000 դրամ | 79 000 դրամ |\n| Բ. Ա + բանկի մնացորդ և բանկ ↔ վաճառք համադրում + զանգին մասնակցում է նաև հաշվապահը | 250 000 դրամ | 149 000 դրամ |",
+   "Line 6, end of the sentence: «…գովազդի ծախս, բանկի վերջին հայտնի մնացորդ՝ ամսաթվով և աղբյուրով (միայն Բ տարբերակում)։»\nLine 8: «- **Բանկ ↔ վաճառք համադրում** (միայն Բ տարբերակում)՝ սեփական հաշիվների միջև փոխանցումները չեն հաշվվում որպես եկամուտ։»\nLine 10: «- **20 րոպե զանգ** շաբաթական՝ թվերը քննարկելու (Բ տարբերակում՝ նաև հաշվապահի մասնակցությամբ)։ Որոշումը միշտ ձերն է։»\nLine 32, table row: «| Բ. Ա + բանկի մնացորդ և համադրում + հաշվապահի մասնակցություն շաբաթական զանգին | 250 000 դրամ | 149 000 դրամ |»"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Գովազդի «արդյունքը» կոչում ենք հավելյալ վաճառք միայն վերահսկվող փորձարկումից հետո։",
+  "problem": "Implies we run and measure controlled experiments during the pilot. The code has no experiment tracking (experiment_completed is always false; tracking experiments is in founder Phase 3), and the 28-day Meta restatement window takes up the whole 4-week pilot. Within this pilot, the 'controlled experiment' that would allow the claim never happens.",
+  "evidence": "RecommendationEngine.java:72,131 experiment=false; V4 recommendations.experiment_completed default false; CLAUDE_RETAIL_AI_PLATFORM_CONTEXT_HY.md §10 Phase 3 'փորձարկումների հետևում'; KpiFlags.ADS_NOT_FINAL (28 days).",
+  "severity": "low",
+  "replacement": "Գովազդից եկած պատվերները չենք անվանում «հավելյալ վաճառք». դա կարելի է պնդել միայն վերահսկվող փորձարկումից հետո, որը այս 4 շաբաթում չենք չափում։ Մենք առաջարկում ենք փորձարկման շեմը և պլանը։",
+  "lens": "honesty",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Գովազդից եկած պատվերները «հավելյալ վաճառք» չենք անվանում. դա կարելի է պնդել միայն վերահսկվող փորձարկումից հետո, որը այս պիլոտում չենք անցկացնում և չենք չափում։ Գովազդի փորձարկման առաջարկում տալիս ենք միայն ձեռքբերման արժեքի առավելագույն շեմը՝ հաշվարկով։",
+   "Գովազդի «արդյունքը» (հարթակի նշագրված պատվերները) հավելյալ վաճառք չենք անվանում. դա պահանջում է վերահսկվող փորձարկում, որն այս 4 շաբաթում չենք չափում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի և մնացորդների արտահանում (Excel), գովազդի ծախսի արտահանում, կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)։",
+  "problem": "Understates what is needed and overstates what can be used. Gross profit comes only from a cost column on the sales lines. The separate cost price list and the manual top-50 cost file that guide 01 offers have no import target. The runbook has no inventory import step, and no inventory mapping template exists, even though inventory rows without an as-of date are rejected. Only Meta has an ad-export guide and mapping.",
+  "evidence": "mapping/TargetEntity.java: only SALE_LINE, INVENTORY_SNAPSHOT, CAMPAIGN_DAILY, BANK_TRANSACTION; KpiService GP from sale_lines.cogs_amount only; docs/samples/mappings has no inventory JSON; PILOT_RUNBOOK.md step 2 lists sales/Meta/bank only; CommitService.inventory missing as_of_date → error; docs/guides/01_HC_Trade_export_HY.md row 3 and 'top-50' line.",
+  "severity": "low",
+  "replacement": "Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի արտահանում (Excel, ինքնարժեքի սյունակով, եթե ՀԾ-ն այն ցույց է տալիս), պահեստի մնացորդների արտահանում՝ արտահանման օրվա դրությամբ, Meta-ի գովազդի ծախսի արտահանում, կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)։ Եթե ինքնարժեքը վաճառքի ֆայլում չկա, համախառն շահույթը դեռ չի հաշվվի։",
+  "lens": "honesty",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի և վերադարձի արտահանում (Excel, ինքնարժեքի սյունակով՝ եթե ՀԾ-ն այն ցույց է տալիս), պահեստի մնացորդների արտահանում (Excel, արտահանման օրվա դրությամբ), Meta-ի (Facebook/Instagram) գովազդի ծախսի արտահանում, կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)։ Համախառն շահույթը հաշվում ենք միայն այն տողերի համար, որոնց ինքնարժեքը կա վաճառքի ֆայլում. առանձին գնացուցակից կամ ձեռքով լրացված ցանկից ինքնարժեքը պիլոտում դեռ չենք վերցնում։ Այլ գովազդային հարթակների (օր. TikTok) ֆայլը՝ միայն նախապես համաձայնեցնելով։",
+   "Առաջին շաբաթ՝ վերջին 90 օրվա վաճառքի/վերադարձի արտահանում (Excel, ինքնարժեքի սյունակով, եթե ՀԾ-ն այն ցույց է տալիս), պահեստի մնացորդներ՝ արտահանման օրվա դրությամբ, Facebook/Instagram (Meta) գովազդի ծախսի արտահանում, կամընտիր՝ բանկային քաղվածք (Excel/CSV կամ MT940)։ Եթե վաճառքի ֆայլում ինքնարժեք չկա, համախառն շահույթը չի հաշվվի։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։",
+  "problem": "Literally true, but it hides that our own Meta guide asks the client to give our email access to the ad account for scheduled weekly export. Depending on the role granted, that access can be more than read-only, which sits badly with 'Ձեր անունից ոչինչ չենք գործարկում'.",
+  "evidence": "docs/guides/02_Meta_Ads_export_HY.md 'Schedule export → նշեք մեր էլ. հասցեն (պետք է ունենա հաշվի հասանելիություն)'.",
+  "severity": "low",
+  "replacement": "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Եթե ընտրեք Meta-ի ավտոմատ շաբաթական արտահանումը, մեզ պետք է միայն հաշվետվությունները դիտելու իրավունք. ադմինի կամ գովազդ խմբագրելու իրավունք չենք խնդրում։",
+  "lens": "honesty",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Եթե ընտրեք Meta-ի շաբաթական ավտոմատ առաքումը, կխնդրենք մեր էլ. հասցեին տալ գովազդային հաշվի միայն հաշվետվությունները դիտելու հասանելիություն (ոչ ադմինի, ոչ գովազդ կառավարելու իրավունք)․ եթե դա բավարար չլինի, ֆայլը կշարունակեք ուղարկել ձեռքով։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։",
+   "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Եթե ցանկանաք, որ Meta-ի շաբաթական հաշվետվությունը մեզ ուղարկվի ավտոմատ, մեր էլ. հասցեին գովազդային հաշվում բավական է տալ միայն «Analyst» դերը (միայն հաշվետվությունների դիտում). «Admin» կամ «Advertiser» դեր չենք խնդրում, և այդ մուտքը կարող եք հանել ցանկացած պահի։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Վճարումը՝ միացումը սկզբում, 4 շաբաթը՝ երկրորդ շաբաթվա վերջում, եթե առաջին երկու հաշվետվությունները օգտակար են։ Կարող եք դադարեցնել ցանկացած պահի։",
+  "problem": "The promise is ambiguous enough to start a dispute. It does not say who decides whether the reports are 'useful'. It does not say whether the setup fee is refunded on early stop, or what happens to the data on early stop (the deletion clause covers only 'after the pilot ends').",
+  "evidence": "docs/sales/02_Pilot_offer_HY.md line 34 vs line 26.",
+  "severity": "low",
+  "replacement": "Վճարումը՝ միացման վճարը սկզբում (<վերադարձվում է / չի վերադարձվում>), 4 շաբաթի վճարը՝ երկրորդ շաբաթվա վերջում, միայն եթե ձեր որոշմամբ առաջին երկու հաշվետվությունները օգտակար են։ Կարող եք դադարեցնել ցանկացած պահի. այդ դեպքում ձեր տվյալները ջնջվում են «Տվյալների պաշտպանություն» բաժնում նշված ժամկետում։",
+  "lens": "honesty",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Վճարումը՝ միացման վճարը սկզբում (վաղաժամ դադարեցման դեպքում <վերադարձվում է / չի վերադարձվում>), 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում, միայն եթե դուք եք որոշում, որ առաջին երկու հաշվետվությունները օգտակար են. հակառակ դեպքում պիլոտն ավարտվում է, և 4 շաբաթվա վճարը չեք կատարում։ Կարող եք դադարեցնել ցանկացած պահի. այդ դեպքում էլ ձեր պահանջով ջնջում ենք ձեր ֆայլերն ու տվյալները, ինչպես պիլոտի ավարտից հետո։",
+   "Վճարումը՝ միացման վճարը պիլոտի սկզբում (վաղաժամ դադարեցնելիս <վերադարձվում է / չի վերադարձվում>), 4 շաբաթի վճարը՝ երկրորդ շաբաթվա վերջում, միայն եթե դուք որոշեք, որ առաջին երկու հաշվետվությունները օգտակար են։ Հակառակ դեպքում պիլոտն ավարտվում է, և 4 շաբաթի վճար չի գանձվում։ Կարող եք դադարեցնել ցանկացած պահի (4 շաբաթի վճարից հետո դադարեցնելիս՝ մնացած շաբաթների գումարը <վերադարձվում է / չի վերադարձվում>)։ Դադարեցումը համարվում է պիլոտի ավարտ. ձեր ֆայլերն ու տվյալները ջնջում ենք ձեր պահանջով՝ <N> աշխատանքային օրվա ընթացքում։",
+   "Վճարումը՝ միացման վճարը սկզբում, 4 շաբաթվա վճարը՝ երկրորդ շաբաթվա վերջում, եթե դուք համարում եք, որ առաջին երկու հաշվետվությունները օգտակար են։ Կարող եք դադարեցնել ցանկացած պահի. միացման վճարը [վերադարձվում է / չի վերադարձվում], իսկ ձեր ֆայլերը և տվյալները ջնջում ենք ձեր պահանջով։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Ոչինչ չեմ վաճառում այսօր։",
+  "problem": "The close asks for a pilot, and the top scoring row (+5) is a sale. Promising 'no selling today' and then pitching damages trust and weakens the commitment test. The opener also mentions 'գները' (pricing decisions), but no question covers them.",
+  "severity": "low",
+  "replacement": "«Ես ուսումնասիրում եմ, թե ինչպես են փոքր խանութները որոշում գնումները և գովազդը։ Հիմնականում հարցեր եմ տալու ձեր վերջին որոշումների մասին. միայն վերջում, եթե տեղին լինի, 5 րոպե ցույց կտամ, թե ինչ ենք փորձարկում։ Կարո՞ղ եմ նշումներ անել. ձեր անունը և խանութի անվանումը չեմ հրապարակի»։",
+  "evidence": "01_Interview_script_HY.md:6, 36-37, 52.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "«Ես ուսումնասիրում եմ, թե փոքր խանութներում ինչպես են որոշում՝ ինչ ապրանք պատվիրել և որքան ծախսել գովազդի վրա։ Հիմնականում հարցնելու եմ ձեր վերջին կոնկրետ որոշումների մասին. միայն վերջում, եթե հետաքրքրի, 5 րոպե ցույց կտամ նմուշային հաշվետվություն, որը հիմա փորձարկում ենք։ Կարո՞ղ եմ նշումներ անել. ձեր անունը և խանութի անվանումը չեմ հրապարակի»։",
+   "«Ես ուսումնասիրում եմ, թե ինչպես են փոքր խանութները որոշում գնումները և գովազդը։ Հիմնականում հարցեր եմ տալու ձեր վերջին կոնկրետ որոշումների մասին. միայն վերջում, եթե ցանկանաք, 5 րոպե ցույց կտամ, թե ինչ ենք փորձարկում։ Կարո՞ղ եմ նշումներ անել. ձեր անունը և խանութի անվանումը չեմ հրապարակի»։",
+   "«Ես ուսումնասիրում եմ, թե ինչպես են փոքր խանութները որոշում գնումները և գովազդը։ Հիմնականում կհարցնեմ ձեր վերջին որոշումների մասին, իսկ վերջում, եթե ցանկանաք, կարճ ցույց կտամ, թե ինչ ենք փորձարկում։ Կարո՞ղ եմ նշումներ անել. ձեր անունը և խանութի անվանումը չեմ հրապարակի»։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "4. Որտե՞ղ եք գովազդ անում (Facebook/Instagram, TikTok, Telegram, այլ)։ Ամսական մոտավորապես ինչքա՞ն եք ծախսում։ Ո՞վ է այն կառավարում։",
+  "problem": "It assumes the shop runs paid ads, packs three questions together, and invites a guess ('մոտավորապես'). Real paid Meta spend decides whether Option Ա's 'գովազդ' part and AD_TEST mean anything for this shop.",
+  "severity": "low",
+  "replacement": "4. Վերջին ամսում վճարովի գովազդ արե՞լ եք։ Եթե այո՝ որտե՞ղ, և որքա՞ն է ծախսվել՝ ըստ Ads Manager-ի կամ քարտի քաղվածքի։ Ո՞վ է այն կառավարում՝ դուք, աշխատակի՞ց, թե՞ գործակալություն։",
+  "evidence": "01_Interview_script_HY.md:12. 02_Pilot_offer_HY.md:31. KpiFlags NO_MARKETING_DATA.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "4. Վերջին ամսում վճարե՞լ եք գովազդի համար։ Եթե այո՝ որտե՞ղ (Facebook/Instagram՝ Ads Manager-ով, TikTok, բլոգեր, Telegram ալիք, այլ) և որքա՞ն՝ այդ ամսվա համար։ Այդ թիվը որտեղի՞ց գիտեք՝ Ads Manager-ից, քարտի քաղվածքից, թե՞ հիշողությամբ։ Ո՞վ է գովազդը կառավարում՝ դուք, աշխատակի՞ց, թե՞ գործակալություն։ *(Եթե վճարովի գովազդ չկա՝ բաց թողնել 8-րդ և 17-րդ հարցերը։)*",
+   "4ա. Վերջին 3 ամսում վճարե՞լ եք գովազդի համար (Facebook/Instagram-ում Boost post կամ արշավ, TikTok, բլոգեր, այլ)։ Խոսքը վճարովի գովազդի մասին է, ոչ թե ձեր էջի անվճար գրառումների։\n4բ. Եթե այո՝ վերջին ամսում մոտավորապես որքա՞ն է ծախսվել, և որտե՞ղ է այդ թիվը երևում (Ads Manager, քարտի քաղվածք, գործակալության հաշիվ)։\n4գ. Ո՞վ է այն կառավարում՝ դուք, աշխատակի՞ց, թե՞ գործակալություն/SMM մասնագետ։",
+   "4. Վերջին 3 ամսում վճարովի գովազդ տվե՞լ եք (ոչ միայն անվճար հրապարակումներ)։ Եթե այո՝ որտե՞ղ, որքա՞ն է ծախսվել վերջին ամսում (եթե կարող եք՝ նայեք Ads Manager-ում) և ո՞վ է այն կառավարում։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "5. **Վերջին անգամ** երբ որոշեցիք, թե ինչ ապրանք պատվիրել, ինչպե՞ս որոշեցիք։ Ի՞նչ թվեր նայեցիք։ Որքա՞ն ժամանակ տևեց։",
+  "problem": "'Ի՞նչ թվեր նայեցիք' assumes numbers were used and pushes the respondent to describe themselves as data-driven. The script never asks how often they order, which decides whether a weekly report fits their decision rhythm.",
+  "severity": "low",
+  "replacement": "5. Պատմեք վերջին պատվերի մասին, որ տվեցիք մատակարարին։ Ե՞րբ էր, ինչի՞ վրա հիմնվեցիք. եթե ինչ-որ ցանկ կամ հաշվետվություն նայեցիք՝ ո՞րը։ Որքա՞ն ժամանակ տևեց։ Որքա՞ն հաճախ եք սովորաբար պատվեր տալիս։",
+  "evidence": "01_Interview_script_HY.md:15. 02_Pilot_offer_HY.md:6, 14 (weekly cadence).",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "5. Պատմեք վերջին պատվերի մասին, որ տվեցիք մատակարարին։ Ե՞րբ էր, և ինչպե՞ս որոշեցիք՝ ինչ և որքան պատվիրել։ Ինչի՞ վրա հիմնվեցիք. եթե ինչ-որ ցանկ կամ ծրագրի հաշվետվություն նայեցիք՝ ո՞րը։ Որքա՞ն ժամանակ տևեց։\n5ա. Որքա՞ն հաճախ եք սովորաբար պատվեր տալիս, և պատվերից քանի՞ օր հետո է ապրանքը հասնում խանութ։",
+   "5. Պատմեք վերջին պատվերի մասին, որը տվեցիք մատակարարին։ Ե՞րբ էր դա, և ինչպե՞ս որոշեցիք՝ ինչ և որքան պատվիրել։ Ինչի՞ վրա հիմնվեցիք (եթե ինչ-որ մնացորդ, ցուցակ կամ հաշվետվություն նայեցիք՝ ո՞րը)։ Որքա՞ն ժամանակ տևեց։\n5ա. Որքա՞ն հաճախ եք սովորաբար պատվեր տալիս հիմնական մատակարարներին, և պատվերից քանի՞ օր հետո է ապրանքը հասնում խանութ։",
+   "5. **Վերջին անգամ** երբ ապրանք պատվիրեցիք, ինչպե՞ս որոշեցիք՝ ինչ և որքան։ Ինչի՞ վրա հիմնվեցիք. եթե որևէ ցանկ կամ հաշվետվություն նայեցիք՝ ո՞րը։ Որքա՞ն ժամանակ տևեց։ Որքա՞ն հաճախ եք սովորաբար պատվեր տալիս։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "15. Գինը ԱԱՀ-ո՞վ է ներառված։ Կազմակերպությունը ԱԱՀ վճարո՞ղ է։",
+  "problem": "Two questions in the wrong order: the first is moot if the company does not pay VAT. The owner often does not know whether ՀԾ amounts include VAT. The accountant checklist (1.1/1.2) covers this, so it wastes discovery time.",
+  "severity": "low",
+  "replacement": "15. Կազմակերպությունը ԱԱՀ վճարո՞ղ է, թե՞ շրջանառության հարկ / միկրոձեռնարկատիրություն։ (Գնի մեջ ԱԱՀ-ի ներառումը ճշտել հաշվապահի հետ՝ checklist-ի 1.2 կետով)",
+  "evidence": "docs/guides/04_Accountant_formulas_checklist_HY.md 1.1-1.2.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "15. Կազմակերպությունը ԱԱՀ վճարո՞ղ է, թե՞ շրջանառության հարկ է վճարում կամ միկրոձեռնարկատիրության սուբյեկտ է։ Եթե ԱԱՀ վճարող է՝ ՀԾ-ից արտահանված վաճառքի գումարները ԱԱՀ-ո՞վ են, թե՞ առանց ԱԱՀ (կամ երկու սյունակով)։ Եթե չգիտի՝ գրել «չգիտի» և ճշտել հաշվապահի հետ՝ checklist-ի 1.2 կետով։",
+   "15. Կազմակերպությունը ԱԱՀ վճարո՞ղ է, թե՞ շրջանառության հարկ / միկրոձեռնարկատիրություն։ *(Եթե ԱԱՀ վճարող է՝ հարցնել, արդյոք ՀԾ-ից արտահանված վաճառքի գումարները ԱԱՀ-ով են, թե առանց. եթե չգիտեն, չպնդել և ճշտել հաշվապահի հետ checklist-ի 1.2 կետով)*",
+   "15. Կազմակերպությունը ԱԱՀ վճարո՞ղ է, թե՞ շրջանառության հարկ վճարող / միկրոձեռնարկատիրության սուբյեկտ։ Եթե ԱԱՀ վճարող է՝ ՀԾ-ի վաճառքի գումարները ԱԱՀ-ով են, թե՞ առանց (եթե չգիտի՝ ճշտել հաշվապահի հետ checklist-ի 1.2 կետով)։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "16. Ո՞ր բանկում է հիմնական հաշիվը։ Ինտերնետ-բանկից քաղվածքը ներբեռնո՞ւմ եք Excel/CSV-ով։",
+  "problem": "A yes/no ability question that skips the format actually used last time (PDF is unusable per guide 03). It does not ask how many accounts there are or whether money moves between them, which is needed for --own-account.add and internal-transfer handling.",
+  "severity": "low",
+  "replacement": "16. Վերջին անգամ ե՞րբ և ո՞վ է ներբեռնել բանկային քաղվածքը, և ի՞նչ ձևաչափով էր (PDF, Excel, CSV, MT940)։ Քանի՞ հաշիվ ունեք, և նրանց միջև գումար փոխանցո՞ւմ եք։",
+  "evidence": "docs/guides/03_Bank_statement_export_HY.md:8, 21-22. PILOT_RUNBOOK.md step 1b.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "16. Ո՞ր բանկերում ունեք հաշիվ, և քանի՞ ընթացիկ հաշիվ է օգտագործում խանութը։ Այդ հաշիվների միջև գումար փոխանցո՞ւմ եք (օր.՝ պահուստային հաշվին)։ Վերջին անգամ ո՞վ է ներբեռնել քաղվածքը ինտերնետ-բանկից, և ի՞նչ ձևաչափով էր (PDF, Excel/CSV, MT940, այլ)։",
+   "16. Ո՞ր բանկերում և քանի՞ հաշիվ ունի կազմակերպությունը։ Այդ հաշիվների միջև գումար փոխանցո՞ւմ եք (օր.՝ խանութի հաշվից պահուստային հաշիվ)։ Վերջին անգամ ո՞վ և ե՞րբ է ինտերնետ-բանկից քաղվածք ներբեռնել, և ի՞նչ ձևաչափով էր՝ PDF, Excel/CSV, թե MT940։",
+   "16. Ո՞ր բանկերում և քանի՞ հաշիվ ունեք։ Դրանց միջև գումար փոխանցո՞ւմ եք։ Վերջին անգամ ո՞վ և ի՞նչ ձևաչափով է ներբեռնել քաղվածքը (PDF, Excel/CSV, MT940)։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "## 5. Փակում (5 րոպե) — միայն այստեղ ցույց տալ նմուշը",
+  "problem": "5 minutes cannot fit a demo, three questions and a price ask. There is no follow-up when the answer is 'no' (Q20 starts with 'Եթե այո'), so negative answers teach nothing, and the script never asks for referrals, a standard discovery commitment.",
+  "severity": "low",
+  "replacement": "## 5. Փակում (8–10 րոպե) — միայն այստեղ ցույց տալ նմուշը\n…\n21. Եթե «ոչ»՝ «Ի՞նչը պետք է փոխվի, որ սա արժենա ձեր ժամանակը»։\n22. «Ո՞ւմ գիտեք, ով նույն հարցերն ունի. կարո՞ղ եք հիմա գրել նրան և ծանոթացնել մեզ»։",
+  "evidence": "01_Interview_script_HY.md:33-37. Section timings sum to 35 min with only 5 for the close.",
+  "lens": "method",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "## 5. Փակում (8–10 րոպե) — միայն այստեղ ցույց տալ նմուշը\n…\n20. Եթե այո՝ «Պիլոտի պայմանները կուղարկեմ. կարո՞ղ ենք <օր> 20 րոպե խոսել հաշվապահի հետ բանաձևերի մասին»։\n21. Եթե ոչ՝ «Ի՞նչն է խանգարում. արտահանելը դժվար է, մտահոգ եք տվյալների գաղտնիությամբ, թե՞ սա հիմա առաջնահերթ չէ»։ Չհամոզել, պարզապես գրանցել պատճառը։\n22. (Երկու դեպքում էլ) «Ո՞ւմ գիտեք՝ մեկ այլ խանութի տեր կամ հաշվապահ, ում հետ արժե նույն զրույցն ունենալ։ Կարո՞ղ եք ծանոթացնել»։",
+   "## 5. Փակում (10 րոպե) — միայն այստեղ ցույց տալ նմուշը\n- Ցույց տալ `docs/samples/SAMPLE_weekly_report_synthetic_2026-09.xlsx`-ից միայն «Ամփոփում» և «Առաջարկներ» թերթերը (նշել, որ թվերը **օրինակային** են)։\n18. «Այս հաշվետվությունից ո՞ր թիվը կօգներ ձեր վերջին որոշման ժամանակ, և ո՞րն է ավելորդ»։\n19. **Պարտավորության հարց** (ոչ «կգնեի՞ք»). «Կարո՞ղ եք մինչև <օր> ուղարկել վերջին 90 օրվա վաճառքի արտահանումը, որ ձեր իրական թվերով նույնը պատրաստեմ»։\n20. Եթե այո՝ «Պիլոտի պայմանները կուղարկեմ. կարո՞ղ ենք <օր> 20 րոպե խոսել հաշվապահի հետ բանաձևերի մասին»։\n21. Եթե ոչ՝ «Ի՞նչն է այսօր խանգարում ուղարկել ֆայլը. ո՞վ պետք է անի արտահանումը, որքա՞ն ժամանակ կպահանջի, թե՞ մտահոգություն ունեք տվյալների համար»։ (Պատասխանը գրանցել բառացի։)\n22. Երկու դեպքում էլ՝ «Ո՞ր այլ խանութի սեփականատիրոջ կամ հաշվապահի գիտեք, ով վերջերս նման խնդիր է ունեցել։ Կարո՞ղ եք հենց հիմա գրել նրան և ծանոթացնել մեզ»։\n\n(Optionally, add a row to the scoring table: | Ծանոթացրեց այլ խանութի հետ | +1 |)",
+   "## 5. Փակում (10 րոպե) — միայն այստեղ ցույց տալ նմուշը\n…\n21. Եթե ոչ՝ «Ի՞նչն է խանգարում՝ արտահանումն անելը, տվյալները մեզ տալը, թե՞ սա հիմա առաջնահերթ չէ»։ Չհամոզել, գրանցել պատճառը։\n22. Բոլորին. «Ո՞ր այլ խանութատիրոջ կամ հաշվապահի գիտեք, ով նույն խնդիրն ունի։ Կարո՞ղ եք ինձ ծանոթացնել նրա հետ»։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "# Պիլոտի առաջարկ. «Առևտրաչափ» շաբաթական վերլուծություն (1 էջ)",
+  "problem": "'Պիլոտ' is an unexplained loanword for a shop owner. 'առաջարկ' means 'offer' here but 'recommendation' on line 7 and in the report sheet 'Առաջարկներ'. '(1 էջ)' is an internal note visible to the client.",
+  "evidence": "ReportLabels.java line 17 SHEET_ADVICE = 'Առաջարկներ'.",
+  "severity": "low",
+  "replacement": "# «Առևտրաչափ»՝ 4 շաբաթվա փորձնական աշխատանք. շաբաթական վերլուծություն ձեր խանութի համար",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Line 1: \"# «Առևտրաչափ»՝ շաբաթական վերլուծություն ձեր խանութի համար. 4 շաբաթվա փորձնական շրջան\". Change the same word on lines 25–26 as well: \"Փորձնական շրջանում արհեստական բանականության արտաքին ծառայություն **չի** օգտագործվում...\" and \"Փորձնական շրջանի ավարտից հետո ձեր ֆայլերը և տվյալները ջնջում ենք ձեր պահանջով։\". Removing \"(1 էջ)\" is optional and should match the docs/guides/* titles, which use the same tag.",
+   "Title, line 1: \"# «Առևտրաչափ»՝ 4 շաբաթվա վճարովի փորձնական շրջան. շաբաթական վերլուծություն ձեր խանութի համար\". Also, for consistency, line 25: \"Պիլոտի ընթացքում\" → \"Փորձնական շրջանում\", and line 26: \"Պիլոտի ավարտից հետո\" → \"Փորձնական շրջանի ավարտից հետո\".",
+   "# «Առևտրաչափ»՝ շաբաթական վերլուծություն ձեր խանութի համար. վճարովի փորձնական շրջան (պիլոտ)"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Ի՞նչ ծրագրով եք վարում վաճառքն ու պահեստը (ՀԾ-Առևտուր, 1C, Excel, այլ)։ Ո՞վ է այն վարում։",
+  "problem": "'վարել վաճառքը' is a Russian calque ('вести продажи'). 'այն' is ambiguous: the program, or the accounting?",
+  "evidence": "01_Interview_script_HY.md line 10.",
+  "severity": "low",
+  "replacement": "Ի՞նչ ծրագրով եք հաշվառում վաճառքն ու պահեստը՝ ՀԾ-Առևտուր, 1C, Excel, թե այլ։ Ո՞վ է տվյալները մուտքագրում ծրագրում։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Ո՞ր ծրագրում եք վարում վաճառքի և պահեստի հաշվառումը (ՀԾ-Առևտուր, 1C, Excel, այլ)։ Ո՞վ է այդ ծրագրում տվյալները մուտքագրում։",
+   "Ի՞նչ ծրագրով եք վարում վաճառքի և պահեստի հաշվառումը՝ ՀԾ-Առևտուր, 1C, Excel, թե այլ։ Ո՞վ է աշխատում այդ ծրագրում և մուտքագրում տվյալները։",
+   "Ի՞նչ ծրագրով եք վարում վաճառքի և պահեստի հաշվառումը (ՀԾ-Առևտուր, 1C, Excel, այլ)։ Ո՞վ է այդ հաշվառումը վարում։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Քանի՞ կետ ունեք և մոտավորապես քանի՞ ապրանքատեսակ (SKU)։",
+  "problem": "'կետ' alone is ambiguous (point or item), and 'SKU' cannot be said to an owner.",
+  "evidence": "01_Interview_script_HY.md line 9.",
+  "severity": "low",
+  "replacement": "Քանի՞ խանութ կամ վաճառակետ ունեք, և մոտավորապես քանի՞ տեսակ ապրանք եք վաճառում։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Քանի՞ խանութ կամ վաճառակետ ունեք, և մոտավորապես քանի՞ անուն ապրանք կա ձեր ծրագրի ցանկում (օրինակ՝ նույն ջրի 0,5 լ և 1 լ շշերը երկու առանձին անուն են)։",
+   "Քանի՞ խանութ կամ վաճառակետ ունեք և մոտավորապես քանի՞ տարբեր ապրանք (առանձին անվանում կամ կոդ) եք վաճառում։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Ինտերնետ-բանկից քաղվածքը ներբեռնո՞ւմ եք Excel/CSV-ով։",
+  "problem": "'CSV' and the slash cannot be read aloud. The useful contrast, a file the system can read versus only a PDF, is missing.",
+  "evidence": "Guide 03 line 8: PDF cannot be read automatically.",
+  "severity": "low",
+  "replacement": "Ինտերնետ բանկինգից քաղվածքը Excel ֆայլով կարո՞ղ եք ներբեռնել, թե միայն PDF։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "16. Ո՞ր բանկում է հիմնական հաշիվը։ Քաղվածքը հիմա ինչպե՞ս եք ստանում՝ ինտերնետ-բանկից Excel ֆայլով, միայն PDF-ով, թե թղթով։ Ո՞վ է այն ներբեռնում։ *(Նշում հարցնողի համար՝ CSV-ն և MT940-ը նույնպես հարմար են, PDF-ը՝ ոչ)*",
+   "Ինտերնետ-բանկից քաղվածքն ի՞նչ ֆայլով եք ներբեռնում՝ Excel, թե՞ միայն PDF։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Նպատակը պարզելն է՝ (1) խնդիրը իրակա՞ն է և որքա՞ն արժե, (2) ինչպես են հիմա որոշում կայացնում, (3) կարո՞ղ են մեզ տալ ֆայլերը։",
+  "problem": "Article error: before a vowel it must be 'խնդիրն իրական'. Indirect questions should not carry '՞', and the marks are applied inconsistently ((2) has none). 'որքա՞ն արժե' is unclear (cost to whom?).",
+  "evidence": "01_Interview_script_HY.md line 3.",
+  "severity": "low",
+  "replacement": "Նպատակը պարզելն է՝ (1) խնդիրն իրական է, թե ոչ, և որքան գումար է այն խանութին արժենում, (2) ինչպես են հիմա որոշումներ կայացնում, (3) արդյոք կարող են մեզ տալ ֆայլերը։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Նպատակը պարզելն է՝ (1) արդյոք խնդիրն իրական է և որքան փող կամ ժամանակ է այն խլում խանութին, (2) ինչպես են հիմա որոշումներ կայացնում, (3) արդյոք կարող են մեզ տալ ֆայլերը։",
+   "Նպատակը պարզելն է՝ (1) արդյոք խնդիրն իրական է և որքան փող կամ ժամանակ է այն խլում խանութից, (2) ինչպես են հիմա որոշում կայացնում, (3) արդյոք կարող են մեզ տալ ֆայլերը։",
+   "Նպատակը պարզելն է՝ (1) արդյոք խնդիրն իրական է և որքան փող կամ ժամանակ է այն խլում, (2) ինչպես են հիմա որոշում կայացնում, (3) արդյոք կարող են մեզ տալ ֆայլերը։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Հետո՝ շաբաթը մեկ նույն ֆայլերը թարմ շաբաթվա համար։",
+  "problem": "'թարմ շաբաթ' is a calque of 'fresh week'; the meaning is 'the past week'.",
+  "evidence": "02_Pilot_offer_HY.md line 14.",
+  "severity": "low",
+  "replacement": "Հետո՝ շաբաթը մեկ նույն ֆայլերը՝ անցած շաբաթվա համար։",
+  "lens": "language",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Հետո՝ շաբաթը մեկ անգամ նույն ֆայլերը՝ անցած շաբաթվա տվյալներով։",
+   "Հետո՝ շաբաթը մեկ անգամ նույն ֆայլերը՝ անցած շաբաթվա համար (մնացորդները՝ արտահանման օրվա դրությամբ)։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Հաշվետվությունը չի փոխարինում հաշվապահական հաշվետվությանը։",
+  "problem": "'հաշվետվություն' twice in five words leaves it unclear which report is meant. The owner should hear 'our weekly report' versus 'the accountant's official reports'.",
+  "evidence": "WeeklyReportService.java line 142 has the same disclaimer.",
+  "severity": "low",
+  "replacement": "Մեր շաբաթական հաշվետվությունը չի փոխարինում հաշվապահի կազմած պաշտոնական (հարկային և ֆինանսական) հաշվետվություններին։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "Մեր շաբաթական հաշվետվությունը կառավարչական որոշումների համար է. այն չի փոխարինում հաշվապահի կազմած հարկային և ֆինանսական հաշվետվություններին։",
+   "Մեր շաբաթական հաշվետվությունը չի փոխարինում հաշվապահի կազմած պաշտոնական հաշվետվություններին։"
+  ]
+ },
+ {
+  "document": "interview",
+  "quote": "Չվիճել, եթե ասում են «մենք ամեն ինչ գիտենք մեր գլխում»։",
+  "problem": "'գիտենք մեր գլխում' is an unnatural calque; native phrasing is 'ամեն ինչ մեր գլխում է'.",
+  "evidence": "01_Interview_script_HY.md line 42.",
+  "severity": "low",
+  "replacement": "Չվիճել, եթե ասում են «ամեն ինչ մեր գլխում է, ամեն ինչ գիտենք»։",
+  "lens": "language",
+  "upheld": 2,
+  "votes": 3,
+  "better": [
+   "- Չվիճել, եթե ասում են «ամեն ինչ մեր գլխում է» կամ «ամեն ինչ գլխում ենք պահում»։ Հարցնել վերջին սխալի մասին։",
+   "Չվիճել, եթե ասում են «ամեն ինչ գլխում ենք պահում»։"
+  ]
+ },
+ {
+  "document": "offer",
+  "quote": "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։",
+  "problem": "The client guide for Meta asks the client to schedule exports to 'our e-mail (must have access to the account)'. That means the client grants us access to the ad account without sharing a password. The offer does not limit that access to read-only. If the access level allows managing ads, the promise 'we run nothing on your behalf' rests only on our word and not on the permission level.",
+  "severity": "low",
+  "replacement": "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Եթե ընտրեք Meta-ի հաշվետվության ավտոմատ առաքումը, մեզ անհրաժեշտ է միայն արդյունքները դիտելու իրավունք, ոչ գովազդը կառավարելու։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։",
+  "evidence": "docs/guides/02_Meta_Ads_export_HY.md:19 ('նշեք մեր էլ. հասցեն (պետք է ունենա հաշվի հասանելիություն)').",
+  "lens": "legal",
+  "upheld": 3,
+  "votes": 3,
+  "better": [
+   "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Եթե ընտրեք Meta-ի հաշվետվության շաբաթական ավտոմատ առաքումը, մեզ բավական է գովազդային հաշվի միայն դիտման իրավունք («View performance»)՝ առանց արշավները կառավարելու կամ ադմինի իրավունքի։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։",
+   "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր։ Եթե ընտրեք Meta-ի հաշվետվության շաբաթական ավտոմատ առաքումը մեր էլ. հասցեին, դրա համար բավական է գովազդային հաշվում միայն արդյունքները դիտելու իրավունք (ոչ արշավներ կամ վճարումներ կառավարելու)․ պիլոտի ավարտին այն կարող եք հանել։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։",
+   "Չենք խնդրում ինտերնետ-բանկի, ՀԾ-ի կամ գովազդային հաշվի գաղտնաբառեր, ոչ էլ գովազդը կառավարելու իրավունք։ Meta-ի հաշվետվության ավտոմատ առաքման համար բավական է միայն դիտելու իրավունքը։ Ձեր անունից ոչինչ չենք գործարկում՝ ոչ գնում, ոչ գովազդ, ոչ վճարում։"
+  ]
+ }
+]
