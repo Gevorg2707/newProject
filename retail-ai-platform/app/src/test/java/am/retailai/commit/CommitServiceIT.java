@@ -19,6 +19,7 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -27,10 +28,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(am.retailai.support.MutableClock.Config.class)
 class CommitServiceIT {
 
     @Autowired ImportService importService;
     @Autowired CommitService commitService;
+    @Autowired am.retailai.support.MutableClock clock;
     @Autowired MappingRepository mappings;
     @Autowired TenantTransactions tenantTx;
     @Autowired JdbcClient jdbc;
@@ -39,6 +42,7 @@ class CommitServiceIT {
 
     @BeforeEach
     void freshTenant() {
+        clock.setDate(LocalDate.of(2026, 10, 12));   // pinned: no test depends on the day it runs
         tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('Commit Shop') RETURNING id").query(UUID.class).single());
     }
 
@@ -76,8 +80,8 @@ class CommitServiceIT {
         int returns = inTenant("SELECT count(*) FROM sale_lines WHERE operation_type = 'RETURN'");
         int sales = inTenant("SELECT count(*) FROM sale_lines WHERE operation_type = 'SALE'");
         int products = inTenant("SELECT count(*) FROM products");
-        assertThat(returns).isGreaterThan(0);
-        assertThat(sales + returns).isEqualTo(first.rowsCommitted());
+        assertThat(returns).isEqualTo(11);    // C83: the fixture has exactly 11 'Վերադարձ գնորդից' rows
+        assertThat(sales).isEqualTo(302);
         assertThat(products).isEqualTo(5);
         BigDecimal maxQty = tenantTx.inTenant(tenant, j -> j.sql("SELECT max(quantity) FROM sale_lines").query(BigDecimal.class).single());
         assertThat(maxQty).isLessThanOrEqualTo(new BigDecimal("3"));
@@ -100,6 +104,22 @@ class CommitServiceIT {
         assertThat(report.issues().stream().filter(i -> i.code().equals("vat_unknown")).count()).isEqualTo(imported.rowsParsed());
         assertThat(inTenant("SELECT count(*) FROM sale_lines WHERE vat_included IS NULL")).isEqualTo(imported.rowsParsed());
         assertThat(inTenant("SELECT count(*) FROM validation_issues WHERE severity = 'warning'")).isGreaterThan(0);
+    }
+
+    @Test
+    void adDay_isFinalOnlyWhenOlderThan28Days() {
+        // C82: the not-final branch was never produced
+        clock.setDate(LocalDate.of(2026, 10, 29));
+        var settings = new MappingSettings(null, "AMD", "yyyy-MM-dd", ".", List.of("Day", "Campaign"), "meta", null, "Asia/Yerevan", null, null);
+        ColumnMapping mapping = mappings.save(tenant, new ColumnMapping(null, SourceSystem.META_ADS, TargetEntity.CAMPAIGN_DAILY, "meta",
+            Map.of("date", "Day", "campaign_name", "Campaign", "spend", "Spend"), settings));
+        String csv = "Day,Campaign,Spend\n2026-09-30,Shirts,1000\n2026-10-01,Shirts,1000\n";
+        ImportResult up = importService.upload(tenant, am.retailai.imports.ImportSpec.forMapping(mapping), "m.csv", csv.getBytes(), "mkt");
+        commitService.commit(tenant, up.batchId(), mapping);
+
+        String finals = tenantTx.inTenant(tenant, j -> j.sql("SELECT string_agg(date || '=' || is_final, ',' ORDER BY date) FROM campaign_daily")
+            .query(String.class).single());
+        assertThat(finals).isEqualTo("2026-09-30=true,2026-10-01=false");
     }
 
     @Test

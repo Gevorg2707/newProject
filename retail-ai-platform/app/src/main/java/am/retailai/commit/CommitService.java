@@ -30,9 +30,12 @@ public class CommitService {
     private final TenantTransactions tenantTx;
     private final ObjectMapper json;
 
-    public CommitService(TenantTransactions tenantTx, ObjectMapper json) {
+    private final java.time.Clock clock;
+
+    public CommitService(TenantTransactions tenantTx, ObjectMapper json, java.time.Clock clock) {
         this.tenantTx = tenantTx;
         this.json = json;
+        this.clock = clock;
     }
 
     public CommitReport commit(TenantId tenant, UUID batchId, ColumnMapping mapping) {
@@ -309,7 +312,7 @@ public class CommitService {
 
         String campaignId = r.text("campaign_id") != null ? r.text("campaign_id") : name;
         if (r.text("campaign_id") == null) r.warn("campaign_id_from_name", "campaign_id", "No campaign id in file; name used as key");
-        boolean isFinal = date.isBefore(LocalDate.now(java.time.ZoneId.of(s.timezoneOrDefault())).minusDays(28));
+        boolean isFinal = date.isBefore(LocalDate.now(clock.withZone(java.time.ZoneId.of(s.timezoneOrDefault()))).minusDays(28));
 
         return upsert(jdbc.sql("""
                 INSERT INTO campaign_daily (tenant_id, import_batch_id, platform, date, campaign_id, adset_key, campaign_name, adset_name,

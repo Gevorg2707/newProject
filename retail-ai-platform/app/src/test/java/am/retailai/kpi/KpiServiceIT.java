@@ -23,10 +23,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @ActiveProfiles("test")
+@org.springframework.context.annotation.Import(am.retailai.support.MutableClock.Config.class)
 class KpiServiceIT {
 
     @Autowired KpiService kpi;
     @Autowired am.retailai.cli.PilotCli cli;
+    @Autowired am.retailai.support.MutableClock clock;
     @Autowired TenantTransactions tenantTx;
     @Autowired JdbcClient jdbc;
 
@@ -37,6 +39,7 @@ class KpiServiceIT {
 
     @BeforeEach
     void setUp() {
+        clock.setDate(LocalDate.of(2026, 10, 12));   // pinned: no test depends on the day it runs
         tenant = new TenantId(jdbc.sql("INSERT INTO tenants (name) VALUES ('KPI Shop') RETURNING id").query(UUID.class).single());
         batch = tenantTx.inTenant(tenant, j -> j.sql("""
                 INSERT INTO import_batches (tenant_id, source_system, file_name, file_sha256, file_size_bytes, uploaded_by)
@@ -148,19 +151,32 @@ class KpiServiceIT {
 
     @Test
     void adSpendFromTheLast28Days_isFlaggedNotFinal_olderSpendIsNot() {
-        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Yerevan"));
+        // C52: the old check had no older spend at all; now both sides of the 28-day boundary, with a pinned "today"
+        clock.setDate(LocalDate.of(2026, 10, 29));                       // 28 days after 2026-10-01
         UUID p = product("A-1045", "Shirt");
-        sale("Հ-1", today.minusDays(2).toString(), "SALE", p, "A-1045", "1", "36000", "0", "22000", false);
-        tenantTx.inTenant(tenant, j -> j.sql("""
-                INSERT INTO campaign_daily (tenant_id, import_batch_id, platform, date, campaign_id, campaign_name, spend, currency)
-                VALUES (:t, :b, 'meta', :d, 'c1', 'Shirts', 4000, 'AMD')
-                """).param("t", tenant.value()).param("b", batch).param("d", today.minusDays(2)).update());
+        sale("Հ-1", "2026-09-30", "SALE", p, "A-1045", "1", "36000", "0", "22000", false);
+        ad("2026-09-30", "4000");                                        // 29 days old: final
+        KpiReport september = kpi.compute(tenant, from, to, KpiSettings.defaults());
+        ad("2026-10-01", "4000");                                        // 28 days old: may still be restated
+        KpiReport withOctober = kpi.compute(tenant, from, LocalDate.of(2026, 10, 1), KpiSettings.defaults());
 
-        KpiReport recent = kpi.compute(tenant, today.minusDays(29), today, KpiSettings.defaults());
-        KpiReport old = kpi.compute(tenant, from, to, KpiSettings.defaults());   // September 2026, no ads in it
+        assertThat(september.marketingSpend()).isEqualByComparingTo("4000.00");
+        assertThat(september.flags()).doesNotContain(KpiFlags.ADS_NOT_FINAL);
+        assertThat(withOctober.flags()).contains(KpiFlags.ADS_NOT_FINAL);
+    }
 
-        assertThat(recent.flags()).contains(KpiFlags.ADS_NOT_FINAL);
-        assertThat(old.flags()).doesNotContain(KpiFlags.ADS_NOT_FINAL);
+    @Test
+    void periodBoundsAndSalesDays_areYerevanDays_notUtcDays() {
+        // C55: 2026-08-31 22:30 UTC is 2026-09-01 02:30 in Yerevan (inside); 2026-09-30 21:00 UTC is 2026-10-01 01:00 (outside)
+        UUID p = product("A-1045", "Shirt");
+        saleAt("Հ-1", OffsetDateTime.parse("2026-08-31T22:30:00Z"), p, "A-1045", "36000");
+        saleAt("Հ-2", OffsetDateTime.parse("2026-09-01T19:30:00Z"), p, "A-1045", "36000");   // 23:30 Yerevan, same day as Հ-1
+        saleAt("Հ-3", OffsetDateTime.parse("2026-09-30T21:00:00Z"), p, "A-1045", "36000");
+
+        KpiReport r = kpi.compute(tenant, from, to, KpiSettings.defaults());
+
+        assertThat(r.netSales()).isEqualByComparingTo("72000.00");
+        assertThat(r.daysWithSales()).isEqualTo(1);
     }
 
     @Test
@@ -303,6 +319,23 @@ class KpiServiceIT {
             .param("op", op).param("p", product).param("sku", sku).param("qty", new BigDecimal(qty)).param("gross", new BigDecimal(gross))
             .param("disc", new BigDecimal(discount)).param("cogs", cogs == null ? null : new BigDecimal(cogs)).param("vat", vatIncluded)
             .update());
+    }
+
+    private void saleAt(String doc, OffsetDateTime at, UUID product, String sku, String gross) {
+        tenantTx.inTenant(tenant, j -> j.sql("""
+                INSERT INTO sale_lines (tenant_id, import_batch_id, source_system, source_record_id, document_number, occurred_at,
+                    operation_type, product_id, sku_code, quantity, gross_amount, discount_amount, cogs_amount, currency, vat_included)
+                VALUES (:t, :b, 'HC_TRADE', :rid, :doc, :at, 'SALE', :p, :sku, 1, :gross, 0, 22000, 'AMD', false)
+                """)
+            .param("t", tenant.value()).param("b", batch).param("rid", doc + "/" + sku).param("doc", doc).param("at", at)
+            .param("p", product).param("sku", sku).param("gross", new BigDecimal(gross)).update());
+    }
+
+    private void ad(String date, String spend) {
+        tenantTx.inTenant(tenant, j -> j.sql("""
+                INSERT INTO campaign_daily (tenant_id, import_batch_id, platform, date, campaign_id, campaign_name, spend, currency)
+                VALUES (:t, :b, 'meta', :d, 'c1', 'Shirts', :s, 'AMD')
+                """).param("t", tenant.value()).param("b", batch).param("d", LocalDate.parse(date)).param("s", new BigDecimal(spend)).update());
     }
 
     private void snapshot(UUID product, String sku, String warehouse, String asOf, String qty) {

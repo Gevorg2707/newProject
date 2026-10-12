@@ -83,6 +83,21 @@ class RecommendationEngineTest {
         assertThat(recs).hasSize(3);
         assertThat(recs).anyMatch(r -> r.type() == RecommendationType.ASK_ACCOUNTANT);
         assertThat(find(recs, RecommendationType.ASK_ACCOUNTANT).missing()).contains("vat_basis");
+        Recommendation ad = find(recs, RecommendationType.AD_TEST);   // C53: the downgrade itself was never asserted
+        assertThat(ad.confidence()).isEqualTo(Confidence.LOW);
+        assertThat(ad.status()).isEqualTo(Recommendation.Status.NEEDS_DATA);
+        assertThat(ad.missing()).contains("vat_basis");
+    }
+
+    @Test
+    void formulasNotConfirmed_capsTheAdTestAtMedium() {
+        var sku = sku("B-1", "10", "0", "350000", "220000", "126", "0.333", "378.4", true, Set.of());
+        var confirmed = engine.recommend(report(List.of(sku), Set.of()), costs2000, to, to, RecommendationSettings.defaults());
+        var unconfirmed = engine.recommend(report(List.of(sku), Set.of(KpiFlags.FORMULAS_NOT_CONFIRMED)), costs2000, to, to,
+            RecommendationSettings.defaults());
+
+        assertThat(find(confirmed, RecommendationType.AD_TEST).confidence()).isEqualTo(Confidence.HIGH);
+        assertThat(find(unconfirmed, RecommendationType.AD_TEST).confidence()).isEqualTo(Confidence.MEDIUM);
     }
 
     @Test

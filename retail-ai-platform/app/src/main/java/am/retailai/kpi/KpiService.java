@@ -27,8 +27,11 @@ public class KpiService {
 
     private final TenantTransactions tenantTx;
 
-    public KpiService(TenantTransactions tenantTx) {
+    private final java.time.Clock clock;
+
+    public KpiService(TenantTransactions tenantTx, java.time.Clock clock) {
         this.tenantTx = tenantTx;
+        this.clock = clock;
     }
 
     public KpiReport compute(TenantId tenant, LocalDate from, LocalDate to, KpiSettings settings) {
@@ -105,7 +108,7 @@ public class KpiService {
                 .param("from", from).param("to", to).query(Integer.class).single() > 0;
             if (!anyMarketing) flags.add(KpiFlags.NO_MARKETING_DATA);
             // Meta: insights do not change after 28 days; newer days can still be restated (same rule as CommitService.is_final).
-            LocalDate finalBefore = LocalDate.now(java.time.ZoneId.of("Asia/Yerevan")).minusDays(28);
+            LocalDate finalBefore = LocalDate.now(clock.withZone(java.time.ZoneId.of("Asia/Yerevan"))).minusDays(28);
             boolean adsNotFinal = jdbc.sql("SELECT count(*) FROM campaign_daily WHERE date BETWEEN :from AND :to AND date >= :fb")
                 .param("from", from).param("to", to).param("fb", finalBefore).query(Integer.class).single() > 0;
             if (adsNotFinal) flags.add(KpiFlags.ADS_NOT_FINAL);

@@ -42,6 +42,7 @@ class WeeklyReportServiceIT {
     @Autowired CommitService commitService;
     @Autowired MappingRepository mappings;
     @Autowired WeeklyReportService reports;
+    @Autowired am.retailai.kpi.KpiService kpiService;
     @Autowired JdbcClient jdbc;
 
     @Test
@@ -74,11 +75,19 @@ class WeeklyReportServiceIT {
 
             Sheet summary = wb.getSheetAt(0);
             assertThat(summary.getRow(0).getCell(0).getStringCellValue()).contains("Report Shop");
-            double net = numericByLabel(summary, "Մաքուր վաճառք (net sales)");
-            double gp = numericByLabel(summary, "Համախառն շահույթ (gross profit)");
-            double cogs = numericByLabel(summary, "Ինքնարժեք (COGS)");
-            assertThat(net).isGreaterThan(0);
-            assertThat(gp).isEqualTo(net - cogs, org.assertj.core.data.Offset.offset(0.01));
+            // C56: every summary figure equals KpiService for the same period, and the money figures equal values
+            // computed from the fixture cells independently (see PilotCliIT.septemberKpis_matchTheFileComputedIndependently)
+            var k = kpiService.compute(tenant, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), KpiSettings.defaults());
+            var cent = org.assertj.core.data.Offset.offset(0.01);
+            assertThat(numericByLabel(summary, "Համախառն վաճառք (gross sales)")).isEqualTo(k.grossSales().doubleValue(), cent).isEqualTo(5595000.00, cent);
+            assertThat(numericByLabel(summary, "Զեղչեր")).isEqualTo(k.discounts().doubleValue(), cent).isEqualTo(77000.00, cent);
+            assertThat(numericByLabel(summary, "Վերադարձներ")).isEqualTo(k.returns().doubleValue(), cent).isEqualTo(72916.67, cent);
+            assertThat(numericByLabel(summary, "Մաքուր վաճառք (net sales)")).isEqualTo(k.netSales().doubleValue(), cent).isEqualTo(4525416.67, cent);
+            assertThat(numericByLabel(summary, "Ինքնարժեք (COGS)")).isEqualTo(k.cogs().doubleValue(), cent).isEqualTo(3365800.00, cent);
+            assertThat(numericByLabel(summary, "Համախառն շահույթ (gross profit)")).isEqualTo(k.grossProfit().doubleValue(), cent).isEqualTo(1159616.67, cent);
+            assertThat(numericByLabel(summary, "Գովազդի ծախս (ad spend)")).isEqualTo(k.marketingSpend().doubleValue(), cent);
+            assertThat(numericByLabel(summary, "Փոփոխական ծախսեր (ենթադրություն)")).isEqualTo(k.variableCosts().doubleValue(), cent);
+            assertThat(numericByLabel(summary, "Ծածկույթ (contribution)")).isEqualTo(k.contribution().doubleValue(), cent);
             assertThat(textColumnContains(summary, 0, "FORMULAS_NOT_CONFIRMED")).isTrue();
             assertThat(textColumnContains(summary, 1, "հաշվապահի")).isTrue();      // flag explained in Armenian
             assertThat(textColumnContains(summary, 0, "VAT_UNKNOWN")).isFalse();  // VAT basis was confirmed in mapping
@@ -113,6 +122,7 @@ class WeeklyReportServiceIT {
             Sheet summary = wb.getSheetAt(0);
             assertThat(textColumnContains(summary, 0, "acct ***0000")).isTrue();
             assertThat(textColumnContains(summary, 2, "Վերջին հայտնի մնացորդ 02.09.2026")).isTrue();
+            assertThat(textColumnContains(summary, 2, "հին է, թարմացնել քաղվածքը")).isTrue();   // C81: 28 days before period end
             assertThat(textColumnContains(summary, 2, "ameria_2026-09.sta")).isTrue();
             assertThat(numericByLabel(summary, "acct ***0000 (AMD)")).isEqualTo(2148000.0);
         }
