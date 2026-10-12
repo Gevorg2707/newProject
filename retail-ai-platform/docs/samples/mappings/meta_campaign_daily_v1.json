@@ -1,9 +1,10 @@
 {
   "sourceSystem": "META_ADS",
   "targetEntity": "CAMPAIGN_DAILY",
-  "name": "Meta Ads Manager export v1 (column names = ASSUMPTION, confirm on the client's export)",
+  "name": "Meta Ads Manager export v1 (column names = ASSUMPTION, confirm on the client's export; Campaign ID keeps a renamed campaign one row per day)",
   "fieldToHeader": {
     "date": "Reporting starts",
+    "campaign_id": "Campaign ID",
     "campaign_name": "Campaign name",
     "adset_name": "Ad set name",
     "spend": "Amount spent (AMD)",

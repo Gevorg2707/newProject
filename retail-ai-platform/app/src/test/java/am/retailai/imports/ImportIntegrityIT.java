@@ -158,6 +158,37 @@ class ImportIntegrityIT {
     }
 
     @Test
+    void renamedCampaignWithAnId_updatesTheSameDay_insteadOfDoublingSpend() {
+        // C63: keyed by name, a rename inserted a second row for every restated day
+        var s = new MappingSettings(null, "AMD", "yyyy-MM-dd", ".", List.of("Day", "Campaign"), "meta", null, "Asia/Yerevan", null, null);
+        ColumnMapping m = mappings.save(tenant, new ColumnMapping(null, SourceSystem.META_ADS, TargetEntity.CAMPAIGN_DAILY, "meta",
+            Map.of("date", "Day", "campaign_id", "Campaign ID", "campaign_name", "Campaign", "spend", "Spend"), s));
+        load(m, "m1.csv", "Day,Campaign ID,Campaign,Spend\n2026-09-01,238501,Autumn shirts,1000\n");
+        load(m, "m2.csv", "Day,Campaign ID,Campaign,Spend\n2026-09-01,238501,Autumn shirts SALE,1100\n");
+
+        assertThat(sql("SELECT count(*)::text || ' ' || sum(spend)::int || ' ' || max(campaign_name) FROM campaign_daily"))
+            .isEqualTo("1 1100 Autumn shirts SALE");
+    }
+
+    @Test
+    void salesAndStockOfTheSameSource_keepTheirOwnIdentityColumns_inAnyOrder() {
+        // the identity guard compared HC stock (SKU, store) with HC sales, whose file also has those columns
+        var stockSettings = new MappingSettings(null, "AMD", "dd.MM.yyyy", ".", List.of("SKU", "Store"), null, null, "Asia/Yerevan", null, "2026-09-30");
+        ColumnMapping stock = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.INVENTORY_SNAPSHOT, "stock",
+            Map.of("sku_code", "SKU", "warehouse", "Store", "quantity", "Qty"), stockSettings));
+        var salesSettings = new MappingSettings(false, "AMD", "dd.MM.yyyy", ".", List.of("Doc", "SKU"), null, List.of("RETURN"), "Asia/Yerevan", null, null);
+        ColumnMapping sales = mappings.save(tenant, new ColumnMapping(null, SourceSystem.HC_TRADE, TargetEntity.SALE_LINE, "sales",
+            Map.of("document_number", "Doc", "occurred_at", "Date", "operation_type", "Op", "sku_code", "SKU", "quantity", "Qty",
+                "gross_amount", "Gross", "warehouse", "Store"), salesSettings));
+
+        load(stock, "stock.csv", "SKU,Store,Qty\nA,Main,10\n");
+        CommitReport r = load(sales, "sales.csv", "Doc,Date,Op,SKU,Qty,Gross,Store\nH-1,01.09.2026,SALE,A,2,70000,Main\n");
+
+        assertThat(r.rowsCommitted()).isEqualTo(1);
+        assertThat(sql("SELECT count(*)::text FROM inventory_snapshots")).isEqualTo("1");
+    }
+
+    @Test
     void negativeStockBalance_isCommittedWithAWarning() {
         // C28: a posting error in the source, visible to the operator
         var settings = new MappingSettings(null, "AMD", "dd.MM.yyyy", ".", List.of("SKU", "Store"), null, null, "Asia/Yerevan", null, "2026-09-30");

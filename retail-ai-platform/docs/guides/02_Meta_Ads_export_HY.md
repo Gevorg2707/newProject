@@ -1,11 +1,11 @@
 # Ուղեցույց հաճախորդին. գովազդի ծախսի արտահանում Meta Ads Manager-ից (1 էջ)
 
-**Տարբերակ 1.0, 2026-10-02։** Հիմք՝ Meta Business Help «Export your ads reporting data» (facebook.com/business/help/393890194130036, ստուգված 2026-10-02)։
+**Տարբերակ 1.1, 2026-10-12։** Հիմք՝ Meta Business Help «Export your ads reporting data» (facebook.com/business/help/393890194130036, ստուգված 2026-10-02)։
 
 ## Ինչ է պետք մեզ
 Արշավների (campaign) մակարդակով օրական հաշվետվություն վերջին 90 օրվա համար, հետո՝ շաբաթական։
 
-Սյունակներ՝ Reporting starts / ends, Campaign name, Amount spent, Impressions, Link clicks, Results (Purchases, եթե կարգավորված է), Currency։ Եթե հնարավոր է՝ նաև Ad set name։
+Սյունակներ՝ Reporting starts / ends, **Campaign ID**, Campaign name, Amount spent, Impressions, Link clicks, Results (Purchases, եթե կարգավորված է), Currency։ Եթե հնարավոր է՝ նաև Ad set name։ Campaign ID-ն կարևոր է. եթե արշավի անունը փոխեք, առանց ID-ի նույն օրվա ծախսը կհաշվվի երկու անգամ։ *(Սյունակի ճշգրիտ անունը Columns ցանկում ստուգել ձեր հաշվում. UNVERIFIED)*
 
 ## Քայլեր
 1. Բացեք Ads Manager → Campaigns ներդիր։

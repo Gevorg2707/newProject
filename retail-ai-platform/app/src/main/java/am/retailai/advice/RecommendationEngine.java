@@ -81,14 +81,26 @@ public class RecommendationEngine {
         Recommendation ask = accountantQuestion(k, dataAsOf);
         boolean criticalAsk = k.flags().contains(KpiFlags.VAT_UNKNOWN) || k.flags().contains(KpiFlags.COGS_MISSING);
 
-        all.sort(Comparator.comparingInt(Recommendation::priority)
-            .thenComparing(r -> r.facts().getOrDefault("days_of_stock", BigDecimal.valueOf(Long.MAX_VALUE))));
+        all.sort(Comparator.comparingInt(Recommendation::priority).thenComparing(RecommendationEngine::urgency));
         List<Recommendation> out = new ArrayList<>(all.subList(0, Math.min(all.size(), s.maxRecommendations())));
         if (ask != null) {
             if (out.size() < s.maxRecommendations()) out.add(ask);
             else if (criticalAsk) out.set(out.size() - 1, ask);
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Within a priority, most urgent first: a restock with the fewest days of stock, a slow mover with the most days
+     * (no days at all = no sales = dead stock, the worst).
+     */
+    private static BigDecimal urgency(Recommendation r) {
+        BigDecimal days = r.facts().get("days_of_stock");
+        return switch (r.type()) {
+            case RESTOCK -> days == null ? BigDecimal.valueOf(Long.MAX_VALUE) : days;
+            case SLOW_MOVER -> days == null ? BigDecimal.valueOf(Long.MIN_VALUE) : days.negate();
+            default -> BigDecimal.ZERO;
+        };
     }
 
     private Recommendation build(RecommendationType type, SkuKpi x, int priority, LinkedHashMap<String, BigDecimal> facts,

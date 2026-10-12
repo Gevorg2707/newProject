@@ -176,9 +176,12 @@ public class ImportService {
         List<Map<String, Object>> others = jdbc.sql("""
                 SELECT DISTINCT ON (identity_scheme) identity_scheme, id FROM import_batches
                 WHERE source_system = :source AND identity_scheme IS NOT NULL AND identity_scheme <> :scheme
-                """).param("source", source.name()).param("scheme", spec.identityScheme()).query().listOfRows();
+                  AND identity_scheme LIKE :prefix || '%'
+                """).param("source", source.name()).param("scheme", spec.identityScheme()).param("prefix", spec.schemePrefix())
+            .query().listOfRows();
         for (Map<String, Object> other : others) {
-            String scheme = (String) other.get("identity_scheme");
+            String scheme = ((String) other.get("identity_scheme")).substring(spec.schemePrefix().length());
+            if (scheme.contains(":") && !scheme.startsWith("cols:")) continue;   // "SALE_LINE:..." seen from a target-less spec
             List<String> columns = scheme.startsWith("cols:")
                 ? List.of(scheme.substring("cols:".length()).split("\\|"))
                 : jdbc.sql("SELECT DISTINCT jsonb_object_keys(raw_payload) FROM source_records WHERE import_batch_id = :b")

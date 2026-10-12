@@ -160,6 +160,19 @@ class RecommendationEngineTest {
         assertThat(r.missing()).contains("sku_mapping_check");
     }
 
+    @Test
+    void slowMovers_worstFirst_deadStockBeforeMildOnes() {
+        // C86: ascending days of stock put the mildest slow mover first and dropped dead stock
+        var mild = sku("C-1", "23", "0", "223000", "149500", "120", "0.767", "156.5", true, Set.of());
+        var dead = sku("E-1", "0", "0", "0", "0", "25", "0.000", null, true, Set.of());
+        var worse = sku("D-1", "3", "0", "90000", "60000", "300", "0.100", "3000.0", true, Set.of());
+        var recs = engine.recommend(report(List.of(mild, dead, worse), Set.of()), costs2000, to, to,
+            new RecommendationSettings(14, 14, 10));
+
+        assertThat(recs).filteredOn(r -> r.type() == RecommendationType.SLOW_MOVER).extracting(Recommendation::skuCode)
+            .containsExactly("E-1", "D-1", "C-1");
+    }
+
     // ---- builders ----
     private SkuKpi sku(String code, String sold, String returned, String net, String cogs, String onHand, String velocity,
                        String days, boolean slow, Set<KpiFlags> flags) {

@@ -1,0 +1,29 @@
+{
+  "sourceSystem": "HC_TRADE",
+  "targetEntity": "INVENTORY_SNAPSHOT",
+  "name": "HC stock by warehouse v1 (synthetic layout; set asOfDate to the export date of each file; replace headers with the client's real export)",
+  "fieldToHeader": {
+    "sku_code": "Ապրանքի կոդ",
+    "sku_name": "Ապրանքի անվանում",
+    "unit": "Չափի միավոր",
+    "warehouse": "Պահեստ",
+    "quantity": "Քանակ",
+    "cost_per_unit": "Ինքնարժեք (առանց ԱԱՀ)",
+    "sale_price": "Վաճառքի գին"
+  },
+  "settings": {
+    "vatIncluded": null,
+    "currency": "AMD",
+    "dateFormat": "dd.MM.yyyy",
+    "decimalSeparator": ".",
+    "idColumns": [
+      "Ապրանքի կոդ",
+      "Պահեստ"
+    ],
+    "platform": null,
+    "returnMarkers": null,
+    "timezone": "Asia/Yerevan",
+    "accountRef": null,
+    "asOfDate": "2026-09-30"
+  }
+}
