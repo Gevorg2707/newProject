@@ -12,7 +12,8 @@ class GuardedExplainerTest {
 
     @Test
     void acceptedLlmText_isUsed_withItsProvenance() {
-        ExplanationProvider llm = r -> new Explanation("Մինչև գովազդը մնում է 11 000 դրամ։", "claude", "claude-opus-5-5", "llm-v1", false, List.of(), null);
+        ExplanationProvider llm = r -> new Explanation("Մինչև գովազդը մնում է 11 000 դրամ։ Նշագրված պատվերները հավելյալ վաճառքի"
+            + " ապացույց չեն։ Վստահությունը միջին է։", "claude", "claude-opus-5-5", "llm-v1", false, List.of(), null);
         Explanation e = new GuardedExplainer(llm).explain(rec);
 
         assertThat(e.provider()).isEqualTo("claude");
@@ -48,6 +49,24 @@ class GuardedExplainerTest {
         assertThat(e1.provider()).isEqualTo("template");
         assertThat(e1.fallbackReason()).startsWith("provider_error");
         assertThat(e2.fallbackReason()).isEqualTo("refused:cyber");
+    }
+
+    @Test
+    void llmTextWithoutTheRequiredCaveats_fallsBackToTemplate() {
+        ExplanationProvider llm = r -> new Explanation("Մինչև գովազդը մնում է 11 000 դրամ։", "claude", "m", "llm-v1", false, List.of(), null);
+        assertThat(new GuardedExplainer(llm).explain(rec).fallbackReason()).isEqualTo("guard_rejected");
+    }
+
+    @Test
+    void templateThatFailsTheGuard_isNeverStoredAsPassed() {
+        // C78: the template used to be stored as guard_passed=true without any check
+        ExplanationProvider badTemplate = r -> new Explanation("Վաճառքը կաճի 25%-ով։", "template", null, "template-x", false, List.of(), null);
+        Explanation e = new GuardedExplainer(null, badTemplate).explain(rec);
+
+        assertThat(e.guardPassed()).isFalse();
+        assertThat(e.fallbackReason()).isEqualTo("template_rejected");
+        assertThat(e.textHy()).doesNotContainPattern("\\d");
+        assertThat(e.guardReasons()).anySatisfy(x -> assertThat(x).contains("25"));
     }
 
     @Test

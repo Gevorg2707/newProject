@@ -13,18 +13,21 @@ import java.util.stream.Collectors;
 /** Deterministic Armenian text from facts. Used when the LLM is off, refuses, errors, or fails the guard. */
 public class TemplateExplanationProvider implements ExplanationProvider {
 
-    public static final String PROMPT_VERSION = "template-v1";
+    public static final String PROMPT_VERSION = "template-v2";
     private static final DateTimeFormatter D = DateTimeFormatter.ofPattern("dd.MM.yyyy");
 
-    private static final Map<String, String> LABELS = Map.of(
-        "supplier_lead_time", "մատակարարման ժամկետը",
-        "seasonality", "սեզոնայնության տվյալները",
-        "fresh_data", "թարմ տվյալներ (վերջին ներմուծումը հին է)",
-        "vat_basis", "ԱԱՀ-ի ներառումը գներում",
-        "cogs", "որոշ ապրանքների ինքնարժեքը",
-        "formula_confirmation", "բանաձևերի հաստատումը հաշվապահի կողմից",
-        "incrementality_unknown_until_experiment", "հավելյալ վաճառքի ապացույց (հնարավոր է միայն փորձարկմամբ)",
-        "variable_cost_per_order", "պատվերի փոփոխական ծախսը");
+    private static final Map<String, String> LABELS = Map.ofEntries(
+        Map.entry("supplier_lead_time", "մատակարարման ժամկետը"),
+        Map.entry("seasonality", "սեզոնայնության տվյալները"),
+        Map.entry("fresh_data", "թարմ տվյալներ (վերջին վաճառքի կամ մնացորդի տվյալը հին է)"),
+        Map.entry("fresh_inventory", "պահեստի թարմ մնացորդ"),
+        Map.entry("inventory_check", "պահեստի մնացորդի ստուգում (բացասական մնացորդ կա)"),
+        Map.entry("single_currency", "մեկ արժույթով տվյալներ"),
+        Map.entry("vat_basis", "ԱԱՀ-ի ներառումը գներում"),
+        Map.entry("cogs", "որոշ ապրանքների ինքնարժեքը"),
+        Map.entry("formula_confirmation", "բանաձևերի հաստատումը հաշվապահի կողմից"),
+        Map.entry("incrementality_unknown_until_experiment", "հավելյալ վաճառքի ապացույց (հնարավոր է միայն փորձարկմամբ)"),
+        Map.entry("variable_cost_per_order", "պատվերի փոփոխական ծախսը"));
 
     private static final Map<Confidence, String> CONF = Map.of(
         Confidence.HIGH, "բարձր", Confidence.MEDIUM, "միջին", Confidence.LOW, "ցածր");
@@ -57,11 +60,12 @@ public class TemplateExplanationProvider implements ExplanationProvider {
         StringBuilder sb = new StringBuilder(body);
         if (!r.assumptions().isEmpty()) sb.append(" Ենթադրություն՝ ").append(labels(r.assumptions())).append("։");
         if (!r.missing().isEmpty() && r.type() != RecommendationType.ASK_ACCOUNTANT) sb.append(" Բացակայում է՝ ").append(labels(r.missing())).append("։");
+        if (r.status() == Recommendation.Status.NEEDS_DATA) sb.append(" Առաջարկը նախնական է, քանի դեռ պակասող տվյալները չկան։");
         sb.append(" Շրջան՝ ").append(r.from().format(D)).append(" – ").append(r.to().format(D)).append("։");
         sb.append(" Վստահություն՝ ").append(CONF.get(r.confidence())).append("։");
         sb.append(" Պատասխանատու՝ ").append(OWNER.getOrDefault(r.owner(), r.owner())).append("։");
         String text = sb.toString();
-        return new Explanation(text, "template", null, PROMPT_VERSION, true, List.of(), null);
+        return new Explanation(text, "template", null, PROMPT_VERSION, false, List.of(), null);   // GuardedExplainer checks it
     }
 
     private static String labels(List<String> keys) {
@@ -76,10 +80,11 @@ public class TemplateExplanationProvider implements ExplanationProvider {
     }
 
     private static String qty(BigDecimal v) {
-        return v == null ? "—" : v.stripTrailingZeros().toPlainString();
+        return dec(v);
     }
 
+    /** At most 2 decimals: a 3-decimal number like "1.667" would read as a thousands group. */
     private static String dec(BigDecimal v) {
-        return v == null ? "—" : v.stripTrailingZeros().toPlainString();
+        return v == null ? "—" : v.setScale(2, RoundingMode.HALF_UP).stripTrailingZeros().toPlainString();
     }
 }

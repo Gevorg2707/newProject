@@ -51,10 +51,80 @@ class ExplanationGuardTest {
     }
 
     @Test
-    void periodDatesAndSmallCounts_areAllowedWithoutBeingFacts() {
+    void periodDates_areAllowed_butSmallCountsAreNotFreeAnymore() {
+        // C13: 0..10 used to pass whatever the facts were
         var r = rec(false, "units", "126");
-        var result = guard.check("01.09.2026 – 30.09.2026 շրջանում մնացորդը 126 հատ է. 2 քայլ։", r);
+        var result = guard.check("01.09.2026 – 30.09.2026 շրջանում մնացորդը 126 հատ է։", r);
         assertThat(result.passed()).as(result.reasons().toString()).isTrue();
+        assertThat(guard.check("Մնացորդը 126 հատ է. 2 քայլ։", r).passed()).isFalse();
+    }
+
+    @Test
+    void groupedThousands_areNeverReadAsSmallDecimals() {
+        // C13: "8,000" was also read as 8.000, "0.7" as 07 = 7
+        var r = rec(false, "days_of_stock", "8.0", "share", "7");
+        assertThat(guard.check("Ծախսը 8,000 դրամ է։", r).passed()).isFalse();
+        assertThat(guard.check("Ծախսը 8.000 դրամ է։", r).passed()).isFalse();
+        assertThat(guard.check("Մասնաբաժինը 0.7 է։", r).passed()).isFalse();
+        assertThat(guard.check("Պաշարը 8 օր է, մասնաբաժինը՝ 7։", r).passed()).isTrue();
+    }
+
+    @Test
+    void causalClaimsInOtherTensesSubjectsAndLanguages_areRejected() {
+        // C12
+        var r = rec(false, "spend", "4000");
+        for (String text : List.of("Գովազդը բերել է նոր վաճառքներ։", "Գովազդները բերեցին վաճառք։", "Արշավը բերեց պատվերներ։",
+                "Վաճառքն աճել է գովազդի պատճառով։", "Գովազդն ավելացրեց վաճառքը։", "Sales rose due to the ads.",
+                "The campaign resulted in more orders.", "Ads increased sales.", "Продажи выросли из-за рекламы.")) {
+            assertThat(guard.check(text, r).passed()).as(text).isFalse();
+        }
+        assertThat(guard.check("Վաճառքն անպայման կավելանա։", r).passed()).isFalse();
+        assertThat(guard.check("Sales will definitely grow.", r).passed()).isFalse();
+    }
+
+    @Test
+    void templatePhrasesAboutAds_areNotCausalClaims() {
+        var r = rec(false, "max_acquisition_cost", "11000");
+        assertThat(guard.check("Մինչև գովազդը մնում է մոտ 11 000 դրամ/հատ։ Առաջարկ՝ սահմանափակ փորձարկում, որտեղ մեկ վաճառքի"
+            + " ձեռքբերման արժեքը չգերազանցի 11 000 դրամը։ Նշագրված պատվերները դեռ չեն ապացուցում հավելյալ վաճառք։", r).passed()).isTrue();
+    }
+
+    @Test
+    void numbersWrittenAsWords_areRejected() {
+        // C46
+        var r = rec(false, "spend", "4000");
+        for (String text : List.of("Վաճառքը կաճի երեսուն տոկոսով։", "Պատվերները կկրկնապատկվեն։", "Ծախսը տասնմեկ հազար է։",
+                "Sales could double.", "Thirty percent more orders.", "Продажи вырастут вдвое.")) {
+            assertThat(guard.check(text, r).passed()).as(text).isFalse();
+        }
+    }
+
+    @Test
+    void negativeFacts_matchOnlyWithTheirSign() {
+        // C78
+        var r = rec(false, "balance_change", "-5000");
+        assertThat(guard.check("Փոփոխությունը -5 000 դրամ է։", r).passed()).isTrue();
+        assertThat(guard.check("Փոփոխությունը 5 000 դրամ է։", r).passed()).isFalse();
+    }
+
+    @Test
+    void requiredDisclosures_confidenceNeedsDataAssumptionsAndProof_areChecked() {
+        // C45
+        var needsData = new Recommendation(RecommendationType.RESTOCK, "B-1", "Shirt", 1, Confidence.LOW,
+            Recommendation.Status.NEEDS_DATA, new LinkedHashMap<>(), List.of("variable_cost_per_order"), List.of("fresh_data"), Set.of(),
+            "warehouse", LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 30), LocalDate.of(2026, 9, 30), false);
+        assertThat(guard.checkAll("Ստուգել համալրումը։ Ենթադրություն կա։ Վստահությունը ցածր է։", needsData).reasons())
+            .anySatisfy(x -> assertThat(x).contains("NEEDS_DATA"));
+        assertThat(guard.checkAll("Առաջարկը նախնական է։ Ենթադրություն կա։ Վստահությունը միջին է։", needsData).reasons())
+            .anySatisfy(x -> assertThat(x).contains("confidence"));
+        assertThat(guard.checkAll("Առաջարկը նախնական է։ Վստահությունը ցածր է։", needsData).reasons())
+            .anySatisfy(x -> assertThat(x).contains("assumption"));
+        assertThat(guard.checkAll("Առաջարկը նախնական է։ Ենթադրություն կա։ Վստահությունը ցածր է։", needsData).passed()).isTrue();
+
+        var adTest = rec(false);
+        assertThat(guard.checkAll("Փորձարկում։ Վստահությունը միջին է։", adTest).reasons())
+            .anySatisfy(x -> assertThat(x).contains("proof"));
+        assertThat(guard.checkAll("Փորձարկում։ Պատվերները չեն ապացուցում հավելյալ վաճառք։ Վստահությունը միջին է։", adTest).passed()).isTrue();
     }
 
     @Test
