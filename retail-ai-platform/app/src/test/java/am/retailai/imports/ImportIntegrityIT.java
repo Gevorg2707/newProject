@@ -240,6 +240,24 @@ class ImportIntegrityIT {
     }
 
     @Test
+    void rowShiftedByAnUnquotedDelimiter_isRejectedAtImport() {
+        ImportResult r = imports.upload(tenant, ImportSpec.forMapping(sales(List.of("Doc", "SKU"))), "w.csv",
+            (HEADER + "H-1,01.09.2026,SALE,A,2,70000,Anna\nH-2,01.09.2026,SALE,B,1,12,500,Aram\n").getBytes(StandardCharsets.UTF_8), "test");
+
+        assertThat(r.rowsInserted()).isEqualTo(1);
+        assertThat(r.rowsRejectedAtImport()).isEqualTo(1);
+        assertThat(sql("SELECT code FROM validation_issues")).isEqualTo("malformed_row");
+    }
+
+    @Test
+    void mappedHeaderThatAppearsTwice_refusesTheFile() {
+        assertThatThrownBy(() -> imports.upload(tenant, ImportSpec.forMapping(sales(List.of("Doc", "SKU"))), "w.csv",
+            "Doc,Date,Op,SKU,Qty,Gross,Gross\nH-1,01.09.2026,SALE,A,2,70000,65000\n".getBytes(StandardCharsets.UTF_8), "test"))
+            .hasMessageContaining("Gross").hasMessageContaining("twice");
+        assertThat(sql("SELECT count(*)::text FROM import_batches")).isEqualTo("0");
+    }
+
+    @Test
     void purgeRaw_emptiesOriginalRows_andMarksTheBatchPurged() {
         load(sales(List.of("Doc", "SKU")), "w1.csv", HEADER + "H-1,01.09.2026,SALE,A,2,70000,\n");
 

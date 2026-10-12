@@ -1,5 +1,6 @@
 package am.retailai.imports;
 
+import am.retailai.parse.Headers;
 import am.retailai.parse.ParsedRow;
 import am.retailai.parse.TabularParser;
 import am.retailai.tenant.TenantId;
@@ -56,6 +57,15 @@ public class ImportService {
             throw new UncheckedIOException("Cannot parse " + fileName + ": " + e.getMessage(), e);
         }
 
+        if (spec.keepHeaders() != null && !rows.isEmpty()) {
+            for (String h : spec.keepHeaders()) {
+                if (rows.getFirst().asMap().containsKey(Headers.repeated(h))) {
+                    throw new IllegalStateException("Column '" + h + "' appears twice in " + fileName + "; the mapping cannot"
+                        + " tell which one is meant. Rename or delete one of them. Nothing was imported.");
+                }
+            }
+        }
+
         return tenantTx.inTenant(tenant, jdbc -> {
             String conflicting = conflictingScheme(jdbc, source, spec, rows);
             if (conflicting != null) {
@@ -94,6 +104,11 @@ public class ImportService {
             int inserted = 0, updated = 0, rejected = 0;
             Map<String, Integer> seen = new java.util.HashMap<>();
             for (ParsedRow row : rows) {
+                if (row.problem() != null) {
+                    rejected++;
+                    importIssue(jdbc, tenant, batchId, null, row.rowNumber(), "malformed_row", null, row.problem() + "; not imported");
+                    continue;
+                }
                 String baseId = RecordIdentity.of(row, spec.idColumns());
                 if (baseId == null) {
                     rejected++;

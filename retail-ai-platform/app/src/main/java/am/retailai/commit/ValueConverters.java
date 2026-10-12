@@ -115,6 +115,14 @@ public final class ValueConverters {
         } catch (DateTimeParseException ignored) {
         }
         try {
+            return Optional.of(LocalDateTime.parse(v).atZone(zone).toOffsetDateTime());   // XLSX date-time cells
+        } catch (DateTimeParseException ignored) {
+        }
+        if (v.matches("\\d{5}")) {
+            // Excel serial day number in a General-formatted cell (1900 date system); 5 digits = years 1927..2173
+            return Optional.of(LocalDate.of(1899, 12, 30).plusDays(Long.parseLong(v)).atStartOfDay(zone).toOffsetDateTime());
+        }
+        try {
             return Optional.of(LocalDate.parse(v).atStartOfDay(zone).toOffsetDateTime());
         } catch (DateTimeParseException ignored) {
         }
@@ -125,11 +133,18 @@ public final class ValueConverters {
         return dateTime(raw, s).map(dt -> dt.atZoneSameInstant(ZoneId.of(s.timezoneOrDefault())).toLocalDate());
     }
 
-    /** Masks counterparty-like tokens: keeps first 2 characters of each word longer than 3 chars. */
+    /** 8+ digits written in groups ("1570 0123 4567 0001", "4111-1111-...", "+374 91 123456"): account, card, phone. */
+    private static final Pattern GROUPED_DIGITS = Pattern.compile("\\+?\\d(?:[\\s-]?\\d){7,}");
+
+    /**
+     * Masks counterparty-like tokens: keeps first 2 characters of each word longer than 3 chars. Digit groups that
+     * together form a long number are masked as one number first.
+     */
     public static String maskDescription(String raw) {
         if (raw == null) return null;
+        String grouped = GROUPED_DIGITS.matcher(raw).replaceAll(m -> m.group().replaceAll("\\D", "").substring(0, 2) + "***");
         StringBuilder sb = new StringBuilder();
-        for (String word : raw.trim().split("\\s+")) {
+        for (String word : grouped.trim().split("\\s+")) {
             if (!sb.isEmpty()) sb.append(' ');
             boolean looksLikeNumberOrCode = word.chars().filter(Character::isDigit).count() * 2 >= word.length();
             if (word.length() <= 3 || looksLikeNumberOrCode) {

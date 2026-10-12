@@ -5,7 +5,6 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -27,7 +26,7 @@ public class Mt940Parser implements TabularParser {
     private static final Pattern FIELD = Pattern.compile("^:(\\d{2}[A-Z]?):(.*)$");
     private static final Pattern BALANCE = Pattern.compile("^([CD])(\\d{6})([A-Z]{3})(\\d+,\\d{0,2})$");
     private static final Pattern LINE = Pattern.compile(
-        "^(\\d{6})(\\d{4})?(RC|RD|C|D)([A-Z])?(\\d+,\\d{0,2})([A-Z][A-Z0-9]{3})([^/]*)(?://(.*))?$");
+        "^(\\d{6})(\\d{4})?(RC|RD|C|D)([A-Z])?(\\d+,\\d{0,2})([A-Z][A-Z0-9]{3})((?:[^/]|/(?!/))*?)(?://(.*))?$");
 
     @Override
     public boolean supports(String fileName) {
@@ -37,7 +36,7 @@ public class Mt940Parser implements TabularParser {
 
     @Override
     public List<ParsedRow> parse(InputStream in) throws IOException {
-        String text = new String(in.readAllBytes(), StandardCharsets.UTF_8).replace("\r", "");
+        String text = TextDecoding.decode(in.readAllBytes(), "The MT940 statement").replace("\r", "");
         List<String[]> fields = tokenize(text);
 
         List<ParsedRow> rows = new ArrayList<>();
@@ -49,7 +48,10 @@ public class Mt940Parser implements TabularParser {
             String tag = f[0];
             String value = f[1];
             switch (tag) {
-                case "20" -> st = new Statement(value.trim());
+                case "20" -> {
+                    if (st != null) throw unclosed(st);
+                    st = new Statement(value.trim());
+                }
                 case "25" -> requireStatement(st, tag).account = value.trim();
                 case "60F", "60M" -> {
                     Statement s = requireStatement(st, tag);
@@ -86,9 +88,9 @@ public class Mt940Parser implements TabularParser {
                     s.rows.add(row);
                 }
                 case "86" -> {
-                    Statement s = requireStatement(st, tag);
-                    if (!s.rows.isEmpty()) {
-                        s.rows.getLast().cells().put("description", value.replace("\n", " ").replaceAll("\\s+", " ").trim());
+                    // after :62F: an :86: is message-level information to the account owner: not a line description
+                    if (st != null && !st.rows.isEmpty()) {
+                        st.rows.getLast().cells().put("description", value.replaceAll("\\s+", " ").trim());
                     }
                 }
                 case "62F", "62M" -> {
@@ -110,27 +112,44 @@ public class Mt940Parser implements TabularParser {
         if (!anyOpening) {
             throw new Mt940FormatException("No opening balance (:60F:) found: this is not an MT940 statement");
         }
-        if (st != null && !st.rows.isEmpty()) {
-            throw new Mt940FormatException("Statement " + st.ref + " has no closing balance (:62F:); the file looks truncated");
-        }
+        if (st != null) throw unclosed(st);
         return rows;
     }
 
-    /** Splits the text into [tag, value] fields; lines that do not start a field continue the previous one. */
+    /**
+     * Splits the text into [tag, value] fields; lines that do not start a field continue the previous one.
+     * SWIFT envelope lines ({1:...}, -}{5:...}, '$' separators) are skipped. SWIFT wraps lines at 65 characters, often
+     * mid-word: a continuation is glued without a space when the previous line was full (61+ characters of content)
+     * and ended in a letter while the next starts with a lowercase letter. This is a heuristic.
+     */
     private static List<String[]> tokenize(String text) {
         List<String[]> out = new ArrayList<>();
+        String previousLine = "";
         for (String raw : text.split("\n")) {
             String line = raw.stripTrailing();
-            if (line.isBlank() || line.equals("-") || line.equals("-}") || line.startsWith("{")) continue;
+            if (line.isBlank() || line.equals("-") || line.startsWith("-}") || line.startsWith("{") || line.equals("$")) continue;
             Matcher m = FIELD.matcher(line);
             if (m.matches()) {
                 out.add(new String[]{m.group(1), m.group(2)});
+                previousLine = m.group(2);
             } else if (!out.isEmpty()) {
                 String[] last = out.getLast();
-                last[1] = last[1] + "\n" + line.strip();
+                String next = line.strip();
+                last[1] = last[1] + (wrappedMidWord(previousLine, next) ? "" : "\n") + next;
+                previousLine = line;
             }
         }
         return out;
+    }
+
+    private static boolean wrappedMidWord(String previous, String next) {
+        return previous.length() >= 61 && !next.isEmpty()
+            && Character.isLetter(previous.charAt(previous.length() - 1)) && Character.isLowerCase(next.charAt(0));
+    }
+
+    private static Mt940FormatException unclosed(Statement st) {
+        return new Mt940FormatException("Statement " + st.ref + " has no closing balance (:62F:) before the next statement"
+            + " or the end of the file; the file looks truncated. Nothing was imported.");
     }
 
     private static Statement requireStatement(Statement st, String tag) throws Mt940FormatException {

@@ -103,6 +103,62 @@ class Mt940ParserTest {
     }
 
     @Test
+    void statementWithoutClosingBalance_followedByAnotherStatement_rejectsTheFile() {
+        // C17: the first statement was silently dropped
+        String s = """
+            :20:A
+            :25:ACC1
+            :60F:C260901AMD1000,00
+            :61:260901C100,00NTRFX1
+            :20:B
+            :25:ACC2
+            :60F:C260901AMD5,00
+            :62F:C260901AMD5,00
+            -
+            """;
+        assertThatThrownBy(() -> parser.parse(stream(s))).isInstanceOf(Mt940FormatException.class)
+            .hasMessageContaining("A").hasMessageContaining("closing balance");
+    }
+
+    @Test
+    void singleSlashesInsideTheCustomerReference_areAllowed() throws IOException {
+        // C39: SWIFT forbids only a leading/trailing '/' and '//'
+        String s = statement(":61:260901D100,00NTRFINV/2026/15//BANK7\n:86:rent\n", "C260901AMD900,00");
+        assertThat(parser.parse(stream(s)).getFirst().asMap())
+            .containsEntry("reference", "INV/2026/15").containsEntry("bank_reference", "BANK7");
+    }
+
+    @Test
+    void swiftEnvelopeTrailers_bomAndMessageLevel86_areTolerated() throws IOException {
+        // C40, C41
+        String s = "\uFEFF" + statement(":61:260901D100,00NTRFX1\n:86:rent\n", "C260901AMD900,00")
+            .replace("-\n", ":86:message level information\n-}{5:{CHK:1A2B3C4D5E6F}}\n$\n");
+        assertThat(parser.parse(stream(s))).hasSize(1);
+    }
+
+    @Test
+    void statementThatIsNotUtf8_isRefused() {
+        // C42: replacement characters would hide the acquiring/tax words
+        byte[] cp1251 = statement(":61:260901D100,00NTRFX1\n:86:Эквайринг\n", "C260901AMD900,00")
+            .getBytes(java.nio.charset.Charset.forName("windows-1251"));
+        assertThatThrownBy(() -> parser.parse(new ByteArrayInputStream(cp1251))).hasMessageContaining("UTF-8");
+    }
+
+    @Test
+    void fullWidth86LineBrokenMidWord_isJoinedWithoutSpace() throws IOException {
+        // C71: SWIFT cuts :86: at 65 characters
+        String line1 = "Payment for goods, POS acq".concat("x".repeat(65 - 26 - 4)).concat("acqu");
+        assertThat(line1).hasSize(65);
+        String s = statement(":61:260901C100,00NTRFX1\n:86:" + line1.substring(4) + "\niring fee\n", "C260901AMD1100,00");
+        // the first :86: line is 65 characters including the ':86:' tag
+        assertThat(parser.parse(stream(s)).getFirst().asMap().get("description")).endsWith("acquiring fee");
+    }
+
+    private static String statement(String lines, String closing) {
+        return ":20:S1\n:25:ACC1\n:28C:1/1\n:60F:C260901AMD1000,00\n" + lines + ":62F:" + closing + "\n-\n";
+    }
+
+    @Test
     void supports_mt940Extensions_only() {
         assertThat(parser.supports("statement.STA")).isTrue();
         assertThat(parser.supports("ameria_2026-09.mt940")).isTrue();

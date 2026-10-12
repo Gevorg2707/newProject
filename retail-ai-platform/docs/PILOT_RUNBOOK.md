@@ -45,6 +45,14 @@ $J --tenant.delete=<id> --confirm="Shop name"
 - `warning:new_sku` on the first import is expected. On later imports it means a new or renamed product.
 - `updated` > 0 on ad files is normal: platforms restate the last ~28 days.
 
+## File refused or rows rejected at import
+- "is not UTF-8": the file is in a legacy encoding (often windows-1251). Ask for "CSV UTF-8" from Excel, or convert:
+  `iconv -f CP1251 -t UTF-8 file.csv > file_utf8.csv`. Nothing was imported.
+- "Column 'X' appears twice": the mapping uses a header that occurs twice. Rename or delete one column in the file.
+- `malformed_row`: the row has more fields than the header, usually a comma inside an unquoted value. Fix that row.
+- CSV delimiter (`,` `;` tab) and an Excel `sep=` first line are detected automatically. XLSX cells are read by type:
+  dates and numbers do not depend on how Excel displays them; formulas use the value Excel saved.
+
 ## Reading the «Համադրում» sheet
 - `TOTAL_SALES_PROXY` means the sales file has no payment method: settlements are only «plausible». Ask the client
   whether the HC export can include the payment method column and add `payment_method` to the mapping.
